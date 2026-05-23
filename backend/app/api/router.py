@@ -3,7 +3,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from typing import Optional
-from uuid import UUID
 from datetime import datetime
 import pytz
 
@@ -95,7 +94,7 @@ async def calculate_chart(req: ChartCalculateRequest, db: AsyncSession = Depends
     )
 
 @router.get("/charts/{chart_id}", response_model=ChartResponse)
-async def get_chart(chart_id: UUID, db: AsyncSession = Depends(get_db)):
+async def get_chart(chart_id: str, db: AsyncSession = Depends(get_db)):
     stmt = select(BaZiChart).where(BaZiChart.id == chart_id).options(selectinload(BaZiChart.ten_gods))
     result = await db.execute(stmt)
     db_chart = result.scalars().first()
@@ -123,7 +122,7 @@ async def get_chart(chart_id: UUID, db: AsyncSession = Depends(get_db)):
     )
 
 @router.get("/calendar/current", response_model=CalendarResponse)
-async def get_current_calendar(timezone: str = "UTC", chart_id: Optional[UUID] = None, db: AsyncSession = Depends(get_db)):
+async def get_current_calendar(timezone: str = "UTC", chart_id: Optional[str] = None, db: AsyncSession = Depends(get_db)):
     try:
         tz = pytz.timezone(timezone)
     except pytz.UnknownTimeZoneError:

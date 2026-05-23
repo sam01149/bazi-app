@@ -9,7 +9,7 @@ class ChartCalculateRequest(BaseModel):
     birth_timezone: str
 
 class NarasiGenerateRequest(BaseModel):
-    chart_id: UUID
+    chart_id: str
     section: str
 
 class PillarSchema(BaseModel):
@@ -30,8 +30,8 @@ class TenGodSchema(BaseModel):
     polarity: str
 
 class ChartResponse(BaseModel):
-    id: UUID
-    user_id: Optional[UUID] = None
+    id: str
+    user_id: Optional[str] = None
     birth_datetime: datetime
     birth_timezone: str
     pillars: PillarsSchema

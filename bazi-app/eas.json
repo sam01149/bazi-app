@@ -9,12 +9,12 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://YOUR_RAILWAY_URL/api"
+        "EXPO_PUBLIC_API_URL": "https://samsam010-bazi-backend.hf.space/api"
       }
     },
     "production": {
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://YOUR_RAILWAY_URL/api"
+        "EXPO_PUBLIC_API_URL": "https://samsam010-bazi-backend.hf.space/api"
       }
     }
   }

@@ -41,7 +41,7 @@ async def calculate_chart(req: ChartCalculateRequest, db: AsyncSession = Depends
     
     # Create DB records
     db_chart = BaZiChart(
-        birth_datetime=dt_aware,
+        birth_datetime=dt_aware.replace(tzinfo=None),
         birth_timezone=req.birth_timezone,
         year_stem=chart_data["pillars"]["year"]["stem"],
         year_branch=chart_data["pillars"]["year"]["branch"],

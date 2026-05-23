@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
@@ -189,15 +189,19 @@ async def generate_narasi_endpoint(req: NarasiGenerateRequest, db: AsyncSession 
     if not db_chart:
         raise HTTPException(status_code=404, detail="Chart not found")
         
-    ten_gods_list = [tg.ten_god for tg in db_chart.ten_gods]
-    
-    # Construct structured data for AI
+    ten_gods_map = {tg.position: tg.ten_god for tg in db_chart.ten_gods}
+
     structured_data = {
         "day_master": db_chart.day_stem,
         "strength": db_chart.day_master_strength,
-        "dominant_gods": ten_gods_list,
-        # we can pass interactions if we calculate them based on current month/year
-        "section": req.section
+        "pillars": {
+            "year":  {"stem": db_chart.year_stem,  "branch": db_chart.year_branch},
+            "month": {"stem": db_chart.month_stem, "branch": db_chart.month_branch},
+            "day":   {"stem": db_chart.day_stem,   "branch": db_chart.day_branch},
+            "hour":  {"stem": db_chart.hour_stem,  "branch": db_chart.hour_branch},
+        },
+        "ten_gods": ten_gods_map,
+        "birth_timezone": db_chart.birth_timezone,
     }
     
     narration = await generate_narasi(structured_data, req.section)

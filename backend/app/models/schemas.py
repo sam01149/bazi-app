@@ -13,8 +13,8 @@ class NarasiGenerateRequest(BaseModel):
     section: str
 
 class PillarSchema(BaseModel):
-    stem: str
-    branch: str
+    stem: str = ''
+    branch: str = ''
 
 class PillarsSchema(BaseModel):
     year: PillarSchema

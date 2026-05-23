@@ -1,15 +1,18 @@
 import uuid
-from sqlalchemy import Column, String, DateTime, ForeignKey, text
+from sqlalchemy import Column, String, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 from app.database import Base
+
+def _now_utc():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 class User(Base):
     __tablename__ = "users"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     timezone = Column(String(50), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_now_utc)
 
     charts = relationship("BaZiChart", back_populates="user", cascade="all, delete-orphan")
 
@@ -32,7 +35,7 @@ class BaZiChart(Base):
     hour_branch = Column(String(5))
     
     day_master_strength = Column(String(20))
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_now_utc)
 
     user = relationship("User", back_populates="charts")
     ten_gods = relationship("TenGod", back_populates="chart", cascade="all, delete-orphan")

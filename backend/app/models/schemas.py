@@ -37,7 +37,7 @@ class ChartResponse(BaseModel):
     pillars: PillarsSchema
     ten_gods: Dict[str, str]
     day_master_strength: Optional[str] = None
-    
+
     class Config:
         from_attributes = True
 
@@ -51,3 +51,36 @@ class InteractionSchema(BaseModel):
 class CalendarResponse(BaseModel):
     current_pillars: PillarsSchema
     interactions: List[InteractionSchema]
+    date_str: Optional[str] = None
+    narasi: Optional[str] = None
+
+# Wish schemas
+class WishCreateRequest(BaseModel):
+    chart_id: str
+    content: str
+
+class WishResponse(BaseModel):
+    id: str
+    chart_id: str
+    content: str
+    analysis: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class WishAnalyzeRequest(BaseModel):
+    chart_id: str
+
+# CachedNarasi schemas
+class CachedNarasiResponse(BaseModel):
+    section: str
+    narasi_text: str
+    generated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class ProfileResponse(BaseModel):
+    chart: ChartResponse
+    cached_sections: Dict[str, str]

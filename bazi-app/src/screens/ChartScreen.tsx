@@ -6,6 +6,18 @@ import {
 import axios from 'axios';
 import { API_URL } from '../config';
 
+const C = {
+  bgDeep:  '#070F2B',
+  bgCard:  '#0D1F4E',
+  bgInput: '#091640',
+  border:  '#1E3A80',
+  gold:    '#F8D21B',
+  white:   '#FFFFFF',
+  muted:   '#8BAAD4',
+  faint:   '#3A5A9A',
+  error:   '#FF6B6B',
+};
+
 const PILLAR_LABELS: Record<string, string> = {
   year:  '年\nTAHUN',
   month: '月\nBULAN',
@@ -23,10 +35,10 @@ const NARASI_SECTIONS = [
 export default function ChartScreen({ route, navigation }: any) {
   const { date, time, timezone } = route.params;
 
-  const [chartData, setChartData]     = useState<any>(null);
-  const [loading, setLoading]         = useState(true);
-  const [error, setError]             = useState('');
-  const [narasi, setNarasi]           = useState('');
+  const [chartData, setChartData]         = useState<any>(null);
+  const [loading, setLoading]             = useState(true);
+  const [error, setError]                 = useState('');
+  const [narasi, setNarasi]               = useState('');
   const [narasiLoading, setNarasiLoading] = useState(false);
   const [activeSection, setActiveSection] = useState('');
 
@@ -34,8 +46,8 @@ export default function ChartScreen({ route, navigation }: any) {
     const fetchChart = async () => {
       try {
         const response = await axios.post(`${API_URL}/charts/calculate`, {
-          birth_date: date,
-          birth_time: time ? `${time}:00` : null,
+          birth_date:     date,
+          birth_time:     time ? `${time}:00` : null,
           birth_timezone: timezone,
         });
         setChartData(response.data);
@@ -68,15 +80,24 @@ export default function ChartScreen({ route, navigation }: any) {
   };
 
   if (loading) {
-    return <View style={styles.center}><ActivityIndicator size="large" color="#0066cc" /></View>;
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={C.gold} />
+        <Text style={styles.loadingText}>Menghitung pilar nasib…</Text>
+      </View>
+    );
   }
   if (error) {
-    return <View style={styles.center}><Text style={styles.error}>{error}</Text></View>;
+    return (
+      <View style={styles.center}>
+        <Text style={styles.errorText}>{error}</Text>
+      </View>
+    );
   }
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>BaZi Chart Anda</Text>
+      <Text style={styles.pageTitle}>BaZi Chart Anda</Text>
 
       {chartData?.pillars && (
         <View style={styles.chartContainer}>
@@ -85,11 +106,13 @@ export default function ChartScreen({ route, navigation }: any) {
             const tenGod = p === 'day'
               ? '日主'
               : (chartData.ten_gods?.[`${p}_stem`] || '-');
+            const isDay = p === 'day';
             return (
-              <View key={p} style={styles.pillar}>
+              <View key={p} style={[styles.pillar, isDay && styles.pillarDay]}>
                 <Text style={styles.pillarLabel}>{PILLAR_LABELS[p]}</Text>
-                <Text style={styles.stem}>{pillar?.stem || '-'}</Text>
-                <Text style={styles.branch}>{pillar?.branch || '-'}</Text>
+                <Text style={[styles.stem, isDay && styles.stemDay]}>{pillar?.stem || '-'}</Text>
+                <View style={styles.divider} />
+                <Text style={[styles.branch, isDay && styles.branchDay]}>{pillar?.branch || '-'}</Text>
                 <Text style={styles.tenGod}>{tenGod}</Text>
               </View>
             );
@@ -97,12 +120,12 @@ export default function ChartScreen({ route, navigation }: any) {
         </View>
       )}
 
-      <View style={styles.strengthRow}>
-        <Text style={styles.strengthLabel}>Kekuatan Day Master:</Text>
+      <View style={styles.strengthCard}>
+        <Text style={styles.strengthLabel}>Kekuatan Day Master</Text>
         <Text style={styles.strengthValue}>{chartData?.day_master_strength ?? '-'}</Text>
       </View>
 
-      <View style={styles.disclaimer}>
+      <View style={styles.disclaimerCard}>
         <Text style={styles.disclaimerText}>
           Interpretasi menggunakan framework 子平真詮 (Zi Ping Zhen Quan). Ini adalah kecenderungan dan pola, bukan prediksi absolut.
         </Text>
@@ -110,21 +133,26 @@ export default function ChartScreen({ route, navigation }: any) {
 
       <Text style={styles.sectionTitle}>Interpretasi AI</Text>
       <View style={styles.sectionButtons}>
-        {NARASI_SECTIONS.map((s) => (
-          <TouchableOpacity
-            key={s.key}
-            style={[styles.sectionBtn, activeSection === s.key && styles.sectionBtnActive]}
-            onPress={() => generateNarasi(s.key)}
-            disabled={narasiLoading}
-          >
-            <Text style={[styles.sectionBtnText, activeSection === s.key && styles.sectionBtnTextActive]}>
-              {s.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
+        {NARASI_SECTIONS.map((s) => {
+          const active = activeSection === s.key;
+          return (
+            <TouchableOpacity
+              key={s.key}
+              style={[styles.sectionBtn, active && styles.sectionBtnActive]}
+              onPress={() => generateNarasi(s.key)}
+              disabled={narasiLoading}
+            >
+              <Text style={[styles.sectionBtnText, active && styles.sectionBtnTextActive]}>
+                {s.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
-      {narasiLoading && <ActivityIndicator style={styles.narasiLoader} color="#0066cc" />}
+      {narasiLoading && (
+        <ActivityIndicator style={styles.narasiLoader} color={C.gold} />
+      )}
       {!!narasi && (
         <View style={styles.narasiBox}>
           <Text style={styles.narasiText}>{narasi}</Text>
@@ -142,46 +170,67 @@ export default function ChartScreen({ route, navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  container: { padding: 20, alignItems: 'center' },
-  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 20 },
+  center:      { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.bgDeep, gap: 12 },
+  loadingText: { color: C.muted, fontSize: 14, marginTop: 4 },
+  errorText:   { color: C.error, textAlign: 'center', padding: 20, fontSize: 15 },
+
+  container: { flexGrow: 1, backgroundColor: C.bgDeep, padding: 20, paddingBottom: 48, alignItems: 'center' },
+  pageTitle: { fontSize: 22, fontWeight: '800', color: C.white, marginBottom: 20, letterSpacing: 0.5 },
 
   chartContainer: {
     flexDirection: 'row',
     width: '100%',
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 10,
-    padding: 12,
-    backgroundColor: '#fafafa',
-  },
-  pillar: { alignItems: 'center', flex: 1 },
-  pillarLabel: { fontSize: 10, color: '#888', marginBottom: 8, textAlign: 'center', lineHeight: 15 },
-  stem: { fontSize: 30, fontWeight: 'bold', marginBottom: 4 },
-  branch: { fontSize: 30, fontWeight: 'bold' },
-  tenGod: { fontSize: 12, color: '#0066cc', marginTop: 8 },
-
-  strengthRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
     marginBottom: 16,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 14,
+    backgroundColor: C.bgCard,
+    overflow: 'hidden',
   },
-  strengthLabel: { fontSize: 15, color: '#333' },
-  strengthValue: { fontSize: 15, fontWeight: 'bold', color: '#333' },
+  pillar: {
+    alignItems: 'center',
+    flex: 1,
+    paddingVertical: 16,
+    paddingHorizontal: 4,
+    borderRightWidth: 1,
+    borderRightColor: C.border,
+  },
+  pillarDay: { backgroundColor: '#0F2860' },
+  pillarLabel: { fontSize: 10, color: C.faint, marginBottom: 10, textAlign: 'center', lineHeight: 15 },
+  stem:     { fontSize: 32, fontWeight: '800', color: C.white, marginBottom: 4 },
+  stemDay:  { color: C.gold },
+  divider:  { width: 24, height: 1, backgroundColor: C.border, marginVertical: 4 },
+  branch:   { fontSize: 32, fontWeight: '800', color: C.white },
+  branchDay:{ color: C.gold },
+  tenGod:   { fontSize: 11, color: C.gold, marginTop: 10, fontWeight: '600' },
 
-  error: { color: 'red', textAlign: 'center', padding: 20 },
-  disclaimer: {
-    backgroundColor: '#f5f5f5',
+  strengthCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    width: '100%',
+    backgroundColor: C.bgCard,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 12,
     padding: 14,
-    borderRadius: 8,
+    marginBottom: 12,
+  },
+  strengthLabel: { fontSize: 14, color: C.muted, fontWeight: '600' },
+  strengthValue: { fontSize: 15, fontWeight: '800', color: C.gold },
+
+  disclaimerCard: {
+    backgroundColor: C.bgCard,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 14,
+    borderRadius: 12,
     marginBottom: 24,
     width: '100%',
   },
-  disclaimerText: { fontSize: 12, fontStyle: 'italic', textAlign: 'center', color: '#666' },
+  disclaimerText: { fontSize: 12, fontStyle: 'italic', textAlign: 'center', color: C.muted, lineHeight: 18 },
 
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 12, alignSelf: 'flex-start' },
+  sectionTitle: { fontSize: 17, fontWeight: '800', color: C.white, marginBottom: 12, alignSelf: 'flex-start' },
   sectionButtons: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -193,30 +242,40 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#0066cc',
+    borderWidth: 1.5,
+    borderColor: C.border,
+    backgroundColor: C.bgCard,
   },
-  sectionBtnActive: { backgroundColor: '#0066cc' },
-  sectionBtnText: { color: '#0066cc', fontSize: 14 },
-  sectionBtnTextActive: { color: '#fff' },
+  sectionBtnActive:     { borderColor: C.gold, backgroundColor: '#151F3E' },
+  sectionBtnText:       { color: C.muted, fontSize: 14, fontWeight: '600' },
+  sectionBtnTextActive: { color: C.gold },
 
-  narasiLoader: { marginVertical: 12 },
+  narasiLoader: { marginVertical: 16 },
   narasiBox: {
-    backgroundColor: '#e8f4fd',
+    backgroundColor: C.bgCard,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderLeftWidth: 3,
+    borderLeftColor: C.gold,
     padding: 16,
-    borderRadius: 8,
+    borderRadius: 12,
     marginBottom: 20,
     width: '100%',
   },
-  narasiText: { fontSize: 14, lineHeight: 22, color: '#222' },
+  narasiText: { fontSize: 14, lineHeight: 24, color: C.white },
 
   calendarBtn: {
-    backgroundColor: '#0066cc',
+    backgroundColor: C.gold,
     paddingVertical: 14,
     paddingHorizontal: 32,
-    borderRadius: 8,
+    borderRadius: 12,
     marginTop: 8,
     marginBottom: 20,
+    shadowColor: C.gold,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 4,
   },
-  calendarBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  calendarBtnText: { color: C.bgDeep, fontSize: 16, fontWeight: '800' },
 });

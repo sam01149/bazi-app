@@ -3,6 +3,21 @@ import { View, Text, StyleSheet, ActivityIndicator, ScrollView } from 'react-nat
 import axios from 'axios';
 import { API_URL } from '../config';
 
+const C = {
+  bgDeep:  '#070F2B',
+  bgCard:  '#0D1F4E',
+  bgInput: '#091640',
+  border:  '#1E3A80',
+  gold:    '#F8D21B',
+  white:   '#FFFFFF',
+  muted:   '#8BAAD4',
+  faint:   '#3A5A9A',
+  error:   '#FF6B6B',
+  clash:   '#FF6B6B',
+  harm:    '#FF9F43',
+  combo:   '#26D0CE',
+};
+
 const PILLAR_LABELS: Record<string, string> = {
   year:  '年\nTAHUN',
   month: '月\nBULAN',
@@ -16,6 +31,14 @@ const INTERACTION_LABEL: Record<string, string> = {
   harm:            'HAMBATAN',
   penalty:         'HUKUMAN',
   self_penalty:    'HUKUMAN DIRI',
+};
+
+const INTERACTION_COLOR: Record<string, string> = {
+  clash:           '#FF6B6B',
+  six_combination: '#26D0CE',
+  harm:            '#FF9F43',
+  penalty:         '#FF6B6B',
+  self_penalty:    '#FF9F43',
 };
 
 export default function CalendarScreen({ route }: any) {
@@ -45,17 +68,26 @@ export default function CalendarScreen({ route }: any) {
   }, [chartId, timezone]);
 
   if (loading) {
-    return <View style={styles.center}><ActivityIndicator size="large" color="#0066cc" /></View>;
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color={C.gold} />
+        <Text style={styles.loadingText}>Memuat kalender energi…</Text>
+      </View>
+    );
   }
   if (error) {
-    return <View style={styles.center}><Text style={styles.error}>{error}</Text></View>;
+    return (
+      <View style={styles.center}>
+        <Text style={styles.errorText}>{error}</Text>
+      </View>
+    );
   }
 
   const interactions: any[] = calendarData?.interactions ?? [];
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Kalender BaZi Saat Ini</Text>
+      <Text style={styles.pageTitle}>Kalender BaZi Saat Ini</Text>
 
       {calendarData?.current_pillars && (
         <View style={styles.chartContainer}>
@@ -65,6 +97,7 @@ export default function CalendarScreen({ route }: any) {
               <View key={p} style={styles.pillar}>
                 <Text style={styles.pillarLabel}>{PILLAR_LABELS[p]}</Text>
                 <Text style={styles.stem}>{pillar?.stem || '-'}</Text>
+                <View style={styles.divider} />
                 <Text style={styles.branch}>{pillar?.branch || '-'}</Text>
               </View>
             );
@@ -74,7 +107,7 @@ export default function CalendarScreen({ route }: any) {
 
       {chartId && (
         <View style={styles.interactions}>
-          <Text style={styles.subtitle}>Interaksi dengan Chart Anda</Text>
+          <Text style={styles.sectionTitle}>Interaksi dengan Chart Anda</Text>
           {interactions.length === 0 ? (
             <View style={styles.emptyCard}>
               <Text style={styles.emptyText}>
@@ -82,17 +115,20 @@ export default function CalendarScreen({ route }: any) {
               </Text>
             </View>
           ) : (
-            interactions.map((item: any, idx: number) => (
-              <View key={idx} style={styles.interactionCard}>
-                <Text style={styles.interactionType}>
-                  {INTERACTION_LABEL[item.type] ?? item.type.toUpperCase()}
-                </Text>
-                <Text style={styles.interactionDesc}>{item.description}</Text>
-                <Text style={styles.narasi}>
-                  Kecenderungan: Terjadi dinamika energi antara {item.user_branch} (natal) dan {item.calendar_branch} (kalender).
-                </Text>
-              </View>
-            ))
+            interactions.map((item: any, idx: number) => {
+              const accentColor = INTERACTION_COLOR[item.type] ?? C.gold;
+              return (
+                <View key={idx} style={[styles.interactionCard, { borderLeftColor: accentColor }]}>
+                  <Text style={[styles.interactionType, { color: accentColor }]}>
+                    {INTERACTION_LABEL[item.type] ?? item.type.toUpperCase()}
+                  </Text>
+                  <Text style={styles.interactionDesc}>{item.description}</Text>
+                  <Text style={styles.interactionNarasi}>
+                    Kecenderungan: Terjadi dinamika energi antara {item.user_branch} (natal) dan {item.calendar_branch} (kalender).
+                  </Text>
+                </View>
+              );
+            })
           )}
         </View>
       )}
@@ -101,44 +137,60 @@ export default function CalendarScreen({ route }: any) {
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  container: { padding: 20, alignItems: 'center' },
-  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 20 },
-  subtitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 12 },
+  center:      { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.bgDeep, gap: 12 },
+  loadingText: { color: C.muted, fontSize: 14, marginTop: 4 },
+  errorText:   { color: C.error, textAlign: 'center', padding: 20, fontSize: 15 },
+
+  container: { flexGrow: 1, backgroundColor: C.bgDeep, padding: 20, paddingBottom: 48, alignItems: 'center' },
+  pageTitle: { fontSize: 22, fontWeight: '800', color: C.white, marginBottom: 20, letterSpacing: 0.5 },
 
   chartContainer: {
     flexDirection: 'row',
     width: '100%',
     marginBottom: 24,
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 10,
-    padding: 12,
-    backgroundColor: '#fafafa',
+    borderColor: C.border,
+    borderRadius: 14,
+    backgroundColor: C.bgCard,
+    overflow: 'hidden',
   },
-  pillar: { alignItems: 'center', flex: 1 },
-  pillarLabel: { fontSize: 10, color: '#888', marginBottom: 8, textAlign: 'center', lineHeight: 15 },
-  stem: { fontSize: 30, fontWeight: 'bold', marginBottom: 4 },
-  branch: { fontSize: 30, fontWeight: 'bold' },
+  pillar: {
+    alignItems: 'center',
+    flex: 1,
+    paddingVertical: 16,
+    paddingHorizontal: 4,
+    borderRightWidth: 1,
+    borderRightColor: C.border,
+  },
+  pillarLabel: { fontSize: 10, color: C.faint, marginBottom: 10, textAlign: 'center', lineHeight: 15 },
+  stem:        { fontSize: 32, fontWeight: '800', color: C.white, marginBottom: 4 },
+  divider:     { width: 24, height: 1, backgroundColor: C.border, marginVertical: 4 },
+  branch:      { fontSize: 32, fontWeight: '800', color: C.white },
 
   interactions: { width: '100%' },
+  sectionTitle: { fontSize: 17, fontWeight: '800', color: C.white, marginBottom: 12 },
+
   interactionCard: {
-    backgroundColor: '#ffe6e6',
+    backgroundColor: C.bgCard,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderLeftWidth: 3,
     padding: 15,
-    borderRadius: 8,
+    borderRadius: 12,
     marginBottom: 10,
   },
-  interactionType: { fontWeight: 'bold', color: '#cc0000', marginBottom: 4 },
-  interactionDesc: { fontSize: 15, marginBottom: 4 },
-  narasi: { fontStyle: 'italic', marginTop: 4, color: '#555', fontSize: 13 },
+  interactionType:  { fontWeight: '800', fontSize: 13, marginBottom: 6, letterSpacing: 0.5 },
+  interactionDesc:  { fontSize: 15, color: C.white, marginBottom: 4 },
+  interactionNarasi:{ fontStyle: 'italic', marginTop: 6, color: C.muted, fontSize: 13, lineHeight: 20 },
 
   emptyCard: {
-    backgroundColor: '#e8f4fd',
-    padding: 16,
-    borderRadius: 8,
+    backgroundColor: C.bgCard,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 20,
+    borderRadius: 12,
     alignItems: 'center',
     width: '100%',
   },
-  emptyText: { color: '#333', textAlign: 'center', lineHeight: 22 },
-  error: { color: 'red', textAlign: 'center', padding: 20 },
+  emptyText: { color: C.muted, textAlign: 'center', lineHeight: 22 },
 });

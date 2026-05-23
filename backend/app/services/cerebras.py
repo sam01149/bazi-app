@@ -1,19 +1,15 @@
 import os
 import json
-import urllib.request
+import logging
+import httpx
 from typing import Dict, Any
 
-CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY", "")
-CEREBRAS_API_URL = "https://api.cerebras.ai/v1/chat/completions" # Adjust if standard OpenAI wrapper URL
+logger = logging.getLogger(__name__)
 
-def generate_narasi(chart_data: Dict[str, Any], section: str) -> str:
-    """
-    Generates narration using Cerebras API based on structured chart data.
-    """
-    if not CEREBRAS_API_KEY:
-        return "Cerebras API key is not configured. Ini adalah teks placeholder narasi untuk V1."
-        
-    system_prompt = """Kamu adalah interpreter BaZi menggunakan framework Zi Ping Zhen Quan (子平真詮).
+CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY", "")
+CEREBRAS_API_URL = "https://api.cerebras.ai/v1/chat/completions"
+
+_SYSTEM_PROMPT = """Kamu adalah interpreter BaZi menggunakan framework Zi Ping Zhen Quan (子平真詮).
 Tugas kamu: tulis narasi bahasa Indonesia yang mudah dipahami berdasarkan DATA TERSTRUKTUR yang diberikan.
 
 ATURAN KETAT:
@@ -25,32 +21,33 @@ ATURAN KETAT:
 6. Selalu sertakan: "Menurut framework Zi Ping Zhen Quan"
 """
 
-    user_content = json.dumps({
-        "chart_data": chart_data,
-        "section": section
-    }, ensure_ascii=False)
-    
-    headers = {
-        "Authorization": f"Bearer {CEREBRAS_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    
+async def generate_narasi(chart_data: Dict[str, Any], section: str) -> str:
+    if not CEREBRAS_API_KEY:
+        logger.error("CEREBRAS_API_KEY tidak dikonfigurasi di environment")
+        return "API key AI tidak dikonfigurasi. Tambahkan CEREBRAS_API_KEY ke HuggingFace Space secrets."
+
     payload = {
-        "model": "llama3.1-70b",
+        "model": "llama-3.3-70b",
         "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content}
+            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "user",   "content": json.dumps({"chart_data": chart_data, "section": section}, ensure_ascii=False)},
         ],
         "temperature": 0.7,
-        "max_tokens": 1000
+        "max_tokens": 1000,
     }
-    
-    req = urllib.request.Request(CEREBRAS_API_URL, data=json.dumps(payload).encode('utf-8'), headers=headers, method='POST')
-    
+
     try:
-        with urllib.request.urlopen(req, timeout=30) as response:
-            result = json.loads(response.read().decode('utf-8'))
-            return result['choices'][0]['message']['content'].strip()
+        async with httpx.AsyncClient(timeout=45.0) as client:
+            resp = await client.post(
+                CEREBRAS_API_URL,
+                headers={"Authorization": f"Bearer {CEREBRAS_API_KEY}", "Content-Type": "application/json"},
+                json=payload,
+            )
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"].strip()
+    except httpx.HTTPStatusError as e:
+        logger.error("Cerebras HTTP %s: %s", e.response.status_code, e.response.text)
+        return f"Gagal menghasilkan narasi (HTTP {e.response.status_code}). Periksa API key dan coba lagi."
     except Exception as e:
-        print(f"Error calling Cerebras API: {e}")
-        return "Gagal menghasilkan narasi karena masalah koneksi AI. Ini adalah teks placeholder narasi untuk V1."
+        logger.error("Cerebras error: %s", e)
+        return f"Gagal menghasilkan narasi: {e}"

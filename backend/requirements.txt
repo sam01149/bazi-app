@@ -3,6 +3,8 @@ uvicorn
 pyswisseph
 pydantic
 sqlalchemy
+asyncpg
 aiosqlite
 python-dotenv
 pytz
+httpx

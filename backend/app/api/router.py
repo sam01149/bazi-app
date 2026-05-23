@@ -201,5 +201,5 @@ async def generate_narasi_endpoint(req: NarasiGenerateRequest, db: AsyncSession 
         "section": req.section
     }
     
-    narration = generate_narasi(structured_data, req.section)
+    narration = await generate_narasi(structured_data, req.section)
     return {"narasi": narration}

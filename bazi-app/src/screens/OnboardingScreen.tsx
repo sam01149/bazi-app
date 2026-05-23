@@ -74,7 +74,7 @@ export default function OnboardingScreen({ navigation }: any) {
         {Platform.OS === 'web' ? (
           // @ts-ignore
           <img
-            src={require('../../../assets/logo.svg')}
+            src={require('../../assets/logo.svg')}
             style={{ width: 88, height: 88, marginBottom: 12, borderRadius: 16 }}
             alt="BaZi Logo"
           />

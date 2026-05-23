@@ -7,8 +7,6 @@ from app.engine.tables import *
 # but it will run fine inside the Docker container.
 try:
     import swisseph as swe
-    EPHE_PATH = os.getenv("EPHE_PATH", "/app/ephe")
-    swe.set_ephe_path(EPHE_PATH)
 except ImportError:
     swe = None
 
@@ -44,7 +42,7 @@ def get_solar_term_date(year: int, term_index: int) -> datetime.datetime:
         
         for _ in range(50): # 50 iterations give very high precision
             mid = (left + right) / 2.0
-            pos = swe.calc_ut(mid, swe.SUN)[0][0]
+            pos = swe.calc_ut(mid, swe.SUN, swe.FLG_MOSEPH)[0][0]
             
             # Handle the wrap-around at 360 degrees
             diff = _normalize_longitude(pos - target_longitude)

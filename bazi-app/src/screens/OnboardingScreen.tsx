@@ -71,7 +71,16 @@ export default function OnboardingScreen({ navigation }: any) {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerIcon}>☯</Text>
+        {Platform.OS === 'web' ? (
+          // @ts-ignore
+          <img
+            src={require('../../../assets/logo.svg')}
+            style={{ width: 88, height: 88, marginBottom: 12, borderRadius: 16 }}
+            alt="BaZi Logo"
+          />
+        ) : (
+          <Text style={styles.headerIcon}>☯</Text>
+        )}
         <Text style={styles.title}>BaZi Chart</Text>
         <Text style={styles.subtitle}>Masukkan data kelahiran untuk membaca empat pilar nasib</Text>
       </View>

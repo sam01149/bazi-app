@@ -10,44 +10,60 @@ const TIMEZONES = [
   { label: 'WIT', sub: 'Jayapura · Maluku · Papua', value: 'Asia/Jayapura' },
 ];
 
-function parseDMY(dmy: string): string | null {
-  const parts = dmy.replace(/\D/g, '/').split('/').filter(Boolean);
-  if (parts.length !== 3) return null;
-  const [d, m, y] = parts;
-  if (!d || !m || !y || y.length !== 4) return null;
-  const iso = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
-  const parsed = new Date(iso);
-  if (isNaN(parsed.getTime())) return null;
-  return iso;
+// Native HTML date/time input untuk web
+function WebDateInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <input
+      type="date"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      max={new Date().toISOString().split('T')[0]}
+      style={{
+        width: '100%', padding: '13px', fontSize: '15px',
+        border: '1.5px solid #C7D0E8', borderRadius: '10px',
+        backgroundColor: '#F5F7FF', color: value ? '#0F1B4C' : '#aaa',
+        marginBottom: '20px', boxSizing: 'border-box', outline: 'none',
+        fontFamily: 'inherit', cursor: 'pointer',
+      }}
+    />
+  );
+}
+
+function WebTimeInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <input
+      type="time"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      style={{
+        width: '100%', padding: '13px', fontSize: '15px',
+        border: '1.5px solid #C7D0E8', borderRadius: '10px',
+        backgroundColor: '#F5F7FF', color: value ? '#0F1B4C' : '#aaa',
+        marginBottom: '20px', boxSizing: 'border-box', outline: 'none',
+        fontFamily: 'inherit', cursor: 'pointer',
+      }}
+    />
+  );
 }
 
 export default function OnboardingScreen({ navigation }: any) {
-  const [dateDMY, setDateDMY]         = useState('');
+  const [date, setDate]               = useState('');
   const [time, setTime]               = useState('');
   const [timezone, setTimezone]       = useState('Asia/Jakarta');
   const [unknownHour, setUnknownHour] = useState(false);
 
   const handleNext = () => {
-    const isoDate = parseDMY(dateDMY);
-    if (!isoDate) {
-      Alert.alert('Tanggal Tidak Valid', 'Masukkan tanggal dengan format DD/MM/YYYY\nContoh: 15/05/1990');
+    if (!date) {
+      Alert.alert('Tanggal Diperlukan', 'Pilih tanggal lahir terlebih dahulu');
       return;
     }
-    if (!unknownHour) {
-      const timeRegex = /^\d{1,2}:\d{2}$/;
-      if (!timeRegex.test(time)) {
-        Alert.alert('Waktu Tidak Valid', 'Masukkan waktu dengan format HH:MM\nContoh: 14:30');
-        return;
-      }
-      const [h, m] = time.split(':').map(Number);
-      if (h < 0 || h > 23 || m < 0 || m > 59) {
-        Alert.alert('Waktu Tidak Valid', 'Jam: 0–23, Menit: 00–59');
-        return;
-      }
+    if (!unknownHour && !time) {
+      Alert.alert('Waktu Diperlukan', 'Pilih waktu lahir atau aktifkan "Jam Tidak Diketahui"');
+      return;
     }
     navigation.navigate('Chart', {
-      date: isoDate,
-      time: unknownHour ? null : time.padStart(5, '0'),
+      date,
+      time: unknownHour ? null : time,
       timezone,
     });
   };
@@ -62,15 +78,18 @@ export default function OnboardingScreen({ navigation }: any) {
 
       <View style={styles.card}>
         <Text style={styles.label}>Tanggal Lahir</Text>
-        <TextInput
-          style={styles.input}
-          value={dateDMY}
-          onChangeText={setDateDMY}
-          placeholder="DD/MM/YYYY  —  contoh: 15/05/1990"
-          placeholderTextColor="#aaa"
-          keyboardType={Platform.OS === 'web' ? 'default' : 'numbers-and-punctuation'}
-          autoCorrect={false}
-        />
+        {Platform.OS === 'web'
+          ? <WebDateInput value={date} onChange={setDate} />
+          : <TextInput
+              style={styles.input}
+              value={date}
+              onChangeText={setDate}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor="#aaa"
+              keyboardType="numbers-and-punctuation"
+              autoCorrect={false}
+            />
+        }
 
         <View style={styles.switchRow}>
           <View>
@@ -88,15 +107,18 @@ export default function OnboardingScreen({ navigation }: any) {
         {!unknownHour && (
           <>
             <Text style={styles.label}>Waktu Lahir</Text>
-            <TextInput
-              style={styles.input}
-              value={time}
-              onChangeText={setTime}
-              placeholder="HH:MM  —  contoh: 14:30"
-              placeholderTextColor="#aaa"
-              keyboardType={Platform.OS === 'web' ? 'default' : 'numbers-and-punctuation'}
-              autoCorrect={false}
-            />
+            {Platform.OS === 'web'
+              ? <WebTimeInput value={time} onChange={setTime} />
+              : <TextInput
+                  style={styles.input}
+                  value={time}
+                  onChangeText={setTime}
+                  placeholder="HH:MM"
+                  placeholderTextColor="#aaa"
+                  keyboardType="numbers-and-punctuation"
+                  autoCorrect={false}
+                />
+            }
           </>
         )}
       </View>

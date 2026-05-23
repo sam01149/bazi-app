@@ -2,10 +2,18 @@ import os
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-# Gunakan SQLite untuk lokal tanpa Docker
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./bazi_local.db")
+_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./bazi_local.db")
 
-engine = create_async_engine(DATABASE_URL, echo=True)
+# Supabase/PostgreSQL connection strings kadang pakai prefix "postgres://"
+# SQLAlchemy butuh "postgresql+asyncpg://"
+if _url.startswith("postgres://"):
+    _url = _url.replace("postgres://", "postgresql+asyncpg://", 1)
+elif _url.startswith("postgresql://") and "+asyncpg" not in _url:
+    _url = _url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+# Supabase Transaction Pooler (pgbouncer) doesn't support prepared statements
+_connect_args = {"statement_cache_size": 0} if "pooler.supabase.com" in _url else {}
+engine = create_async_engine(_url, echo=False, connect_args=_connect_args)
 
 AsyncSessionLocal = sessionmaker(
     bind=engine,

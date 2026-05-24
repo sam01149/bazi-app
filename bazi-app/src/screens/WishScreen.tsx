@@ -83,7 +83,8 @@ export default function WishScreen() {
   };
 
   const deleteWish = (wish: Wish) => {
-    Alert.alert('Hapus Keinginan', `Hapus "${wish.content.slice(0, 40)}..."?`, [
+    const preview = wish.content.length > 40 ? `${wish.content.slice(0, 40)}…` : wish.content;
+    Alert.alert('Hapus Keinginan', `Hapus "${preview}"?`, [
       { text: 'Batal', style: 'cancel' },
       {
         text: 'Hapus', style: 'destructive',

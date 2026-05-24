@@ -24,6 +24,8 @@ Aplikasi mobile interpreter BaZi (四柱/八字) untuk pengguna non-praktisi. Us
 Self app/
 ├── BAZI_APP_TECHNICAL_BRIEF.md     — spesifikasi lengkap (referensi utama)
 ├── bazi_app.md                     — file ini
+├── hf-deploy/                      — mirror backend untuk push ke HF Spaces
+│   └── backend/                    — identik dengan backend/, git remote = hf
 ├── backend/
 │   ├── main.py                     — FastAPI app + CORS + lifespan DB init
 │   ├── requirements.txt
@@ -33,7 +35,7 @@ Self app/
 │   └── app/
 │       ├── database.py             — SQLAlchemy async engine (SQLite dev / PG prod)
 │       ├── models/
-│       │   ├── domain.py           — ORM: User, BaZiChart, TenGod
+│       │   ├── domain.py           — ORM: User, BaZiChart, TenGod, Wish, CachedNarasi
 │       │   └── schemas.py          — Pydantic request/response schemas
 │       ├── api/
 │       │   └── router.py           — semua endpoint API
@@ -42,20 +44,21 @@ Self app/
 │       │   ├── tables.py           — tabel konstan BaZi (stems, branches, interactions)
 │       │   └── interactions.py     — deteksi clash/combination/harm/penalty
 │       └── services/
-│           └── cerebras.py         — generate narasi via Cerebras API
+│           └── cerebras.py         — generate narasi, wish analysis, calendar narasi
 └── bazi-app/
-    ├── App.tsx                     — navigation root (SafeAreaProvider + Stack Navigator)
-    ├── App.nav.tsx                 — duplikat lama, tidak dipakai
-    ├── index.ts                    — entry point Expo (import dari App.tsx)
+    ├── App.tsx                     — navigation root (BottomTabNavigator: Kalender/Keinginan/Profil)
+    ├── index.ts                    — entry point Expo
     ├── .env                        — EXPO_PUBLIC_API_URL=http://<IP>:8000/api
     ├── app.json                    — Expo config
     ├── eas.json                    — EAS Build config
     └── src/
         ├── config.ts               — API_URL (baca EXPO_PUBLIC_API_URL)
+        ├── context/
+        │   └── ChartContext.tsx    — shared chartId + timezone via AsyncStorage
         └── screens/
-            ├── OnboardingScreen.tsx
-            ├── ChartScreen.tsx
-            └── CalendarScreen.tsx
+            ├── ProfileScreen.tsx   — onboarding + chart view + narasi sections
+            ├── WishScreen.tsx      — tulis keinginan + analisis BaZi via AI
+            └── CalendarScreen.tsx  — kalender bulanan + pilar BaZi + interaksi
 ```
 
 ---
@@ -66,8 +69,14 @@ Self app/
 |--------|------|--------|
 | `POST` | `/api/charts/calculate` | Hitung chart BaZi dari tanggal/waktu/timezone |
 | `GET`  | `/api/charts/{chart_id}` | Ambil chart yang sudah tersimpan |
-| `GET`  | `/api/calendar/current?timezone=&chart_id=` | Pilar hari ini + interaksi dengan chart user |
-| `POST` | `/api/narasi/generate` | Generate narasi AI untuk section tertentu |
+| `GET`  | `/api/calendar/current?timezone=&chart_id=` | Pilar hari ini + interaksi + AI narasi |
+| `GET`  | `/api/calendar/date/{YYYY-MM-DD}?timezone=&chart_id=` | Pilar tanggal tertentu + interaksi |
+| `GET`  | `/api/profile/{chart_id}` | Chart + semua cached narasi sections |
+| `POST` | `/api/narasi/generate` | Generate narasi AI (cached ke DB setelah pertama) |
+| `POST` | `/api/wishes` | Simpan keinginan baru |
+| `GET`  | `/api/wishes?chart_id=` | List semua keinginan user |
+| `DELETE` | `/api/wishes/{wish_id}` | Hapus keinginan |
+| `POST` | `/api/wishes/{wish_id}/analyze` | Analisis keinginan vs chart BaZi via AI |
 | `GET`  | `/api/solar-terms/year/{year}` | 24 solar terms dalam satu tahun (UTC) |
 
 ### Contoh request calculate:
@@ -131,28 +140,33 @@ Mendeteksi antara branch chart natal user vs branch kalender saat ini:
 
 ---
 
-## Screen Flow
+## Screen Flow (Tab Navigation)
 
 ```
-OnboardingScreen
-  → input: date (YYYY-MM-DD), time (HH:MM), timezone
-  → toggle: "Jam Tidak Diketahui" (kirim null → backend default 12:00)
-  → validasi: format, range jam/menit, timezone tidak kosong
-      ↓
-ChartScreen
-  → POST /api/charts/calculate
-  → tampil 4 pilar: 年(Tahun) → 月(Bulan) → 日(Hari) → 時(Jam)
-  → tampil Ten Gods per stem, Day Master strength
-  → tombol seksi narasi: Day Master / Karir / Kekayaan / Hubungan
-      → POST /api/narasi/generate → tampil narasi AI
-  → tombol "Cek Kalender BaZi" → pass chartId + timezone
-      ↓
-CalendarScreen
-  → GET /api/calendar/current?timezone=...&chart_id=...
-  → tampil pilar hari ini (urutan sama: Year→Month→Day→Hour)
-  → tampil interaksi (clash/combination/harm/penalty)
-  → jika tidak ada interaksi: pesan "Tidak ada interaksi signifikan..."
-  → jika tidak ada chartId: hanya tampil pilar kalender tanpa interaksi
+App (BottomTabNavigator)
+  ├── Tab: Kalender (CalendarScreen)
+  │   → Kalender grid bulanan, navigasi prev/next bulan
+  │   → Klik tanggal → tampil pilar BaZi: Year/Month/Day
+  │   → Hari ini: GET /api/calendar/current → pilar + AI narasi "Energi Hari Ini"
+  │   → Tanggal lain: GET /api/calendar/date/{date}
+  │   → Jika ada chartId: tampil interaksi (clash/combination/harm/penalty)
+  │   → Jika tidak ada chartId: banner arahkan ke tab Profil
+  │
+  ├── Tab: Keinginan (WishScreen)
+  │   → Jika tidak ada chartId: placeholder → arahkan ke tab Profil
+  │   → Input teks keinginan → POST /api/wishes
+  │   → List keinginan dengan expand/collapse
+  │   → Klik "Analisis dengan BaZi Chart" → POST /api/wishes/{id}/analyze
+  │   → Tampilkan analisis AI berdasarkan chart + keinginan
+  │
+  └── Tab: Profil (ProfileScreen)
+      → Jika belum ada chart: form onboarding (tanggal/waktu/timezone)
+          → POST /api/charts/calculate → simpan ke AsyncStorage
+      → Jika sudah ada chart: GET /api/profile/{chart_id}
+          → Tampil 4 pilar, Ten Gods, Day Master Strength
+          → Tombol narasi: Kepribadian/Karir/Kekayaan/Hubungan/Kekuatan
+              → POST /api/narasi/generate (cached di DB)
+          → Data kelahiran, tombol Reset Profil
 ```
 
 ---
@@ -165,7 +179,15 @@ CalendarScreen
 | Frontend Web | Vercel (free) | `https://bazi-app-two.vercel.app` |
 | Database | Supabase PostgreSQL (free) | Transaction Pooler port 6543 |
 
-**HF Spaces push:** dari `hf-deploy/` folder, `git push hf master:main`
+**HF Spaces push:** dari `hf-deploy/` folder:
+```powershell
+# 1. Sync file backend yang berubah ke hf-deploy/backend/
+cp backend/app/... hf-deploy/backend/app/...
+# 2. Commit dan push
+cd hf-deploy
+git add -A && git commit -m "..."
+git push hf master:main
+```
 
 **Catatan penting:**
 - `statement_cache_size=0` di engine — wajib untuk pgbouncer Transaction Pooler
@@ -174,7 +196,7 @@ CalendarScreen
 
 ---
 
-## Status Saat Ini (2026-05-23)
+## Status Saat Ini (2026-05-24)
 
 ### Sudah Selesai ✅
 - Kalkulasi semua pilar (Year, Month, Day, Hour)
@@ -183,7 +205,15 @@ CalendarScreen
 - Interaksi: Clash + Six Combination + Six Harms + Three Penalties
 - Frontend: navy + gold theme (konsisten dengan logo)
 - Frontend: date/time picker native HTML untuk web, timezone preset WIB/WITA/WIT
-- Frontend: logo SVG ditampilkan di header OnboardingScreen
+- Frontend: bottom tab navigation (Kalender / Keinginan / Profil)
+- Frontend: ChartContext — chartId & timezone persisten via AsyncStorage
+- ProfileScreen: onboarding + chart view + 5 narasi sections (Kepribadian/Karir/Kekayaan/Hubungan/Kekuatan)
+- WishScreen: tulis keinginan + analisis BaZi via AI (Cerebras)
+- CalendarScreen: kalender grid bulanan + pilar hari ini + AI narasi + interaksi
+- Backend: endpoint `/profile/{chart_id}` dengan cached narasi
+- Backend: CRUD `/wishes` + `/wishes/{id}/analyze`
+- Backend: `generate_calendar_narasi` untuk interpretasi energi hari ini
+- Backend: `CachedNarasi` DB model — narasi di-cache per section
 - Deployment: backend di HF Spaces, frontend di Vercel, DB di Supabase
 - AI narasi async dengan httpx, full pillar context dikirim ke Cerebras
 - Fix: `FLG_MOSEPH` untuk ephemeris tanpa file eksternal
@@ -194,9 +224,9 @@ CalendarScreen
 
 ### Belum Ada / Known Issues ⚠️
 - **Tidak ada unit tests** — engine calculation belum ditest
-- **Alembic migrations belum setup** — pakai `create_all()` (ok untuk sekarang)
+- **Alembic migrations belum setup** — pakai `create_all()` (tables baru terbuat otomatis saat restart)
 - **Hidden Stems Ten Gods** — belum diimplementasi
-- **Tidak ada saved charts list** — user tidak bisa lihat history chart
+- **Tidak ada multi-user** — satu device = satu chart (tidak ada login/akun)
 
 ---
 

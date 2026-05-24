@@ -26,28 +26,49 @@ _CASCADE = [
     ("https://api.cerebras.ai/v1/chat/completions",  "CEREBRAS_API_KEY",  "llama3.1-8b"),
 ]
 
-_SYSTEM_PROMPT = """Sistem: Analis Profiling Struktural berbasis Zi Ping Zhen Quan (子平真詮).
-Tugas: Ekstraksi metrik psikologis dan strategis dari data BaZi terstruktur.
+BASE_PROMPT = """Sistem: Analis Data BaZi.
+Framework: Zi Ping Zhen Quan (子平真詮).
 
-ATURAN KETAT:
-1. Eliminasi total bahasa motivasi, pujian (flattery), dan validasi emosional.
-2. Identifikasi kekuatan sebagai "Keuntungan Sistemik" dan kelemahan sebagai "Kerentanan Sistemik". Paparkan keduanya secara proporsional.
-3. Gunakan terminologi probabilitas objektif ("korelasi tinggi", "pola dominan", "deviasi perilaku") bukan kepastian absolut ("pasti", "akan").
-4. Nada keluaran: Bahasa Indonesia, klinis, asertif, lugas. Dilarang menggunakan gaya bahasa percakapan santai.
-5. Panjang: Maksimal 3 paragraf per section, padat informasi.
-6. Prefix wajib di awal kalimat pertama: "Berdasarkan analisis struktural Zi Ping Zhen Quan:"
+ATURAN GLOBAL KETAT:
+- Eliminasi bahasa motivasi, pujian, dan validasi emosional.
+- Dilarang memberikan prediksi absolut ("pasti", "akan"). Gunakan terminologi probabilitas objektif ("korelasi tinggi", "pola dominan", "deviasi perilaku").
+- Nada keluaran: Bahasa Indonesia, klinis, taktis, lugas, tanpa basa-basi percakapan.
+- Deskripsikan kondisi negatif secara telanjang tanpa kata pelunak.
+- Ekstraksi kesimpulan murni berdasarkan kalkulasi struktural interaksi elemen dan Ten Gods.
 """
 
-_CALENDAR_SYSTEM_PROMPT = """Sistem: Analis Dinamika Waktu berbasis Zi Ping Zhen Quan (子平真詮).
-Tugas: Kalkulasi interaksi taktis antara natal chart dan pilar waktu spesifik.
+PROFILE_TASK_PROMPT = """Tugas: Ekstraksi metrik psikologis dan strategis dari data BaZi terstruktur (Profil Natal).
 
-ATURAN KETAT:
-1. Dilarang memprediksi kejadian absolut. Fokus pada identifikasi kondisi lingkungan (volatilitas, friksi, atau momentum).
-2. Jika terdeteksi Clash/Harm/Punishment/Destruction, deskripsikan potensi konflik operasional atau disrupsi emosional secara telanjang tanpa kata-kata pelunak.
-3. Jika interaksi kosong/netral, nyatakan "Kondisi Netral/Status Quo" dan hentikan elaborasi. Dilarang memaksakan interpretasi pada data kosong.
-4. Nada keluaran: Bahasa Indonesia, direktif, objektif.
-5. Panjang: Maksimal 2 paragraf ringkas.
+ATURAN SPESIFIK:
+1. Identifikasi kekuatan sebagai "Keuntungan Sistemik" dan kelemahan sebagai "Kerentanan Sistemik". Paparkan secara proporsional.
+2. Prefix kalimat pertama: "Berdasarkan analisis struktural Zi Ping Zhen Quan:"
+3. Format keluaran: Maksimal 3 paragraf per section, padat informasi.
 """
+
+STRATEGY_TASK_PROMPT = """Tugas: Evaluasi kelayakan (feasibility) target pengguna terhadap konfigurasi Ten Gods dan elemen chart.
+
+ATURAN SPESIFIK:
+1. Dilarang afirmasi palsu. Jika target bertentangan dengan struktur chart, nyatakan secara eksplisit tingkat inkompatibilitas dan risikonya tanpa diperhalus.
+2. Output wajib memuat 3 parameter metrik:
+   - Keselarasan Sistem: Analisis teknis (korelasi Ten Gods/Elemen target vs chart dominan).
+   - Friksi Bawaan: Hambatan struktural spesifik dari chart yang akan menjegal target tersebut.
+   - Protokol Mitigasi: 2-3 taktik operasional untuk mem-bypass friksi bawaan.
+3. Nada keluaran: Bahasa Indonesia, taktis, teknis, tanpa basa-basi.
+4. Format keluaran: Maksimal 4 paragraf.
+"""
+
+TIME_TASK_PROMPT = """Tugas: Kalkulasi interaksi taktis antara natal chart dan pilar waktu spesifik.
+
+ATURAN SPESIFIK:
+1. Fokus pada pemetaan kondisi lingkungan (volatilitas, friksi, momentum).
+2. Jika ada Clash/Harm/Punishment/Destruction, paparkan potensi disrupsi operasional.
+3. Jika tidak ada interaksi (kosong), output: "Kondisi Netral/Status Quo." Hentikan elaborasi.
+4. Format keluaran: Maksimal 2 paragraf ringkas.
+"""
+
+
+def _compose_system_prompt(task_prompt: str) -> str:
+    return f"{BASE_PROMPT}\n\n{task_prompt}"
 
 
 def is_error_narasi(text: str) -> bool:
@@ -105,27 +126,15 @@ async def _call_ai(messages: list, max_tokens: int = 1000) -> str:
 
 async def generate_narasi(chart_data: Dict[str, Any], section: str) -> str:
     messages = [
-        {"role": "system", "content": _SYSTEM_PROMPT},
+        {"role": "system", "content": _compose_system_prompt(PROFILE_TASK_PROMPT)},
         {"role": "user", "content": json.dumps({"chart_data": chart_data, "section": section}, ensure_ascii=False)},
     ]
     return await _call_ai(messages, max_tokens=1000)
 
 
 async def generate_wish_analysis(chart_data: Dict[str, Any], wish_content: str) -> str:
-    system = """Sistem: Analis Strategi berbasis Zi Ping Zhen Quan (子平真詮).
-Tugas: Evaluasi kelayakan (feasibility) target pengguna terhadap konfigurasi Ten Gods dan elemen chart.
-
-ATURAN KETAT:
-1. Dilarang memberikan afirmasi palsu. Jika target bertentangan dengan struktur chart, nyatakan secara eksplisit tingkat inkompatibilitas dan risikonya tanpa diperhalus.
-2. Output wajib memuat 3 parameter metrik:
-   - Keselarasan Sistem: Analisis teknis (korelasi Ten Gods/Elemen target vs chart dominan).
-   - Friksi Bawaan: Hambatan struktural spesifik dari chart yang akan menjegal target tersebut.
-   - Protokol Mitigasi: 2-3 taktik operasional untuk mem-bypass friksi bawaan.
-3. Nada keluaran: Bahasa Indonesia, taktis, teknis, tanpa basa-basi.
-4. Panjang: Maksimal 4 paragraf.
-"""
     messages = [
-        {"role": "system", "content": system},
+        {"role": "system", "content": _compose_system_prompt(STRATEGY_TASK_PROMPT)},
         {"role": "user", "content": json.dumps({"chart_data": chart_data, "keinginan": wish_content}, ensure_ascii=False)},
     ]
     return await _call_ai(messages, max_tokens=1200)
@@ -144,7 +153,7 @@ async def generate_calendar_narasi(
         "interaksi": interactions,
     }, ensure_ascii=False)
     messages = [
-        {"role": "system", "content": _CALENDAR_SYSTEM_PROMPT},
+        {"role": "system", "content": _compose_system_prompt(TIME_TASK_PROMPT)},
         {"role": "user", "content": user_content},
     ]
     return await _call_ai(messages, max_tokens=600)

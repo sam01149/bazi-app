@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, ActivityIndicator, ScrollView,
   TouchableOpacity, Dimensions,
@@ -15,10 +15,10 @@ const MONTHS_ID = [
 ];
 
 const INTERACTION_META: Record<string, { label: string; color: string; icon: string }> = {
-  clash:           { label: 'Benturan',   color: C.red,   icon: '⚡' },
-  six_combination: { label: 'Kombinasi',  color: C.teal,  icon: '◎' },
-  harm:            { label: 'Hambatan',   color: C.amber, icon: '◌' },
-  penalty:         { label: 'Hukuman',    color: C.red,   icon: '△' },
+  clash:           { label: 'Benturan',     color: C.red,   icon: '⚡' },
+  six_combination: { label: 'Kombinasi',    color: C.teal,  icon: '◎' },
+  harm:            { label: 'Hambatan',     color: C.amber, icon: '◌' },
+  penalty:         { label: 'Hukuman',      color: C.red,   icon: '△' },
   self_penalty:    { label: 'Hukuman Diri', color: C.amber, icon: '△' },
 };
 
@@ -40,6 +40,18 @@ function formatDateLong(dateStr: string): string {
   return `${days[d.getDay()]}, ${d.getDate()} ${MONTHS_ID[d.getMonth()]} ${d.getFullYear()}`;
 }
 
+const isNarasiError = (text: string): boolean => {
+  if (!text || text.length < 60) return true;
+  return (
+    text.startsWith('Gagal') ||
+    text.includes('HTTP 4') ||
+    text.includes('rate limit') ||
+    text.includes('API key') ||
+    text.includes('Semua model') ||
+    text.includes('Periksa API')
+  );
+};
+
 export default function CalendarScreen() {
   const { chartId, timezone, loading: ctxLoading } = useChart();
   const today = new Date();
@@ -52,10 +64,44 @@ export default function CalendarScreen() {
   const [dayLoading, setDayLoading] = useState(false);
   const [dayError,   setDayError]   = useState('');
 
+  const [calNarasi,        setCalNarasi]        = useState('');
+  const [calNarasiLoading, setCalNarasiLoading] = useState(false);
+  // Track which date narasi was last requested for, to discard stale responses
+  const narasi_dateRef = useRef<string>('');
+
+  const loadCalNarasi = useCallback(async (dateStr: string) => {
+    if (!chartId) return;
+    narasi_dateRef.current = dateStr;
+    setCalNarasiLoading(true);
+    setCalNarasi('');
+    try {
+      const res = await axios.post(`${API_URL}/calendar/narasi`, {
+        chart_id: chartId,
+        date_str: dateStr,
+        timezone,
+      });
+      // Only update if user is still on the same date
+      if (narasi_dateRef.current === dateStr) {
+        setCalNarasi(res.data.narasi);
+      }
+    } catch (err: any) {
+      if (narasi_dateRef.current === dateStr) {
+        const detail = err?.response?.data?.detail;
+        setCalNarasi(detail ?? 'Gagal memuat penjelasan. Coba lagi.');
+      }
+    } finally {
+      if (narasi_dateRef.current === dateStr) {
+        setCalNarasiLoading(false);
+      }
+    }
+  }, [chartId, timezone]);
+
   const loadDayData = useCallback(async (dateStr: string) => {
     setDayLoading(true);
     setDayError('');
     setDayData(null);
+    setCalNarasi('');
+    setCalNarasiLoading(false);
     try {
       const tz  = encodeURIComponent(timezone);
       const cid = chartId ? `&chart_id=${chartId}` : '';
@@ -65,12 +111,14 @@ export default function CalendarScreen() {
         : `${API_URL}/calendar/date/${dateStr}?timezone=${tz}${cid}`;
       const res = await axios.get(url);
       setDayData(res.data);
+      // Fetch AI narasi in parallel (doesn't block main data display)
+      if (chartId) loadCalNarasi(dateStr);
     } catch {
       setDayError('Gagal memuat data. Pastikan backend berjalan.');
     } finally {
       setDayLoading(false);
     }
-  }, [chartId, timezone, todayStr]);
+  }, [chartId, timezone, todayStr, loadCalNarasi]);
 
   useEffect(() => {
     if (!ctxLoading) loadDayData(todayStr);
@@ -198,7 +246,7 @@ export default function CalendarScreen() {
                 {interactions.length === 0 ? (
                   <View style={styles.emptyCard}>
                     <Text style={styles.emptyText}>
-                      Tidak ada interaksi signifikan hari ini.{'\n'}Energi berjalan netral.
+                      Tidak ada interaksi signifikan.{'\n'}Energi berjalan netral.
                     </Text>
                   </View>
                 ) : (
@@ -219,6 +267,31 @@ export default function CalendarScreen() {
                     );
                   })
                 )}
+
+                {/* AI narasi for interactions */}
+                {calNarasiLoading ? (
+                  <View style={styles.narasiLoadingRow}>
+                    <ActivityIndicator size="small" color={C.gold} />
+                    <Text style={styles.narasiLoadingText}>AI membaca interaksi chart…</Text>
+                  </View>
+                ) : calNarasi ? (
+                  <View style={[styles.narasiBox, isNarasiError(calNarasi) && styles.narasiBoxError]}>
+                    <View style={styles.narasiBoxHeader}>
+                      <Text style={styles.narasiBoxLabel}>✦ Penjelasan AI</Text>
+                      {isNarasiError(calNarasi) && (
+                        <TouchableOpacity
+                          style={styles.retryBtn}
+                          onPress={() => loadCalNarasi(selectedDate)}
+                        >
+                          <Text style={styles.retryBtnText}>↻ Coba Lagi</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                    <Text style={[styles.narasiText, isNarasiError(calNarasi) && styles.narasiErrorText]}>
+                      {calNarasi}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
             )}
 
@@ -346,6 +419,36 @@ const styles = StyleSheet.create({
     borderColor: C.border,
   },
   emptyText: { color: C.textMuted, textAlign: 'center', lineHeight: 22, fontSize: 14 },
+
+  // AI narasi
+  narasiLoadingRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginTop: 12, paddingLeft: 2,
+  },
+  narasiLoadingText: { color: C.textMuted, fontSize: 13 },
+
+  narasiBox: {
+    marginTop: 12,
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderLeftWidth: 3,
+    borderLeftColor: C.gold,
+    borderRadius: 12,
+    padding: 14,
+  },
+  narasiBoxError:  { borderLeftColor: '#c0392b', borderColor: '#c0392b44' },
+  narasiBoxHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  narasiBoxLabel:  { fontSize: 11, fontWeight: '900', color: C.gold, letterSpacing: 0.8 },
+  narasiText:      { fontSize: 13, lineHeight: 22, color: C.text },
+  narasiErrorText: { color: '#e07070' },
+
+  retryBtn: {
+    paddingHorizontal: 10, paddingVertical: 4,
+    borderRadius: 8, borderWidth: 1,
+    borderColor: '#c0392b88', backgroundColor: '#c0392b22',
+  },
+  retryBtnText: { fontSize: 12, fontWeight: '700', color: '#e07070' },
 
   noChartCard: {
     backgroundColor: C.surface,

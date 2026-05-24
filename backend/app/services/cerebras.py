@@ -1,14 +1,30 @@
 import os
 import json
 import logging
-import asyncio
 import httpx
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
-CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY", "")
-CEREBRAS_API_URL = "https://api.cerebras.ai/v1/chat/completions"
+_ERROR_PREFIX = "ERROR:"
+
+_ERROR_PHRASES = [
+    "Gagal menghasilkan narasi",
+    "rate limited",
+    "API key tidak",
+    "Periksa API key",
+    "Semua model sedang",
+]
+
+# (url, key_env_var, model) — SambaNova first (lebih jarang 429), Cerebras sebagai fallback
+_CASCADE = [
+    ("https://api.sambanova.ai/v1/chat/completions", "SAMBANOVA_API_KEY", "Meta-Llama-3.1-405B-Instruct"),
+    ("https://api.sambanova.ai/v1/chat/completions", "SAMBANOVA_API_KEY", "Meta-Llama-3.3-70B-Instruct"),
+    ("https://api.cerebras.ai/v1/chat/completions",  "CEREBRAS_API_KEY",  "qwen-3-235b-a22b-instruct-2507"),
+    ("https://api.cerebras.ai/v1/chat/completions",  "CEREBRAS_API_KEY",  "gpt-oss-120b"),
+    ("https://api.cerebras.ai/v1/chat/completions",  "CEREBRAS_API_KEY",  "zai-glm-4.7"),
+    ("https://api.cerebras.ai/v1/chat/completions",  "CEREBRAS_API_KEY",  "llama3.1-8b"),
+]
 
 _SYSTEM_PROMPT = """Kamu adalah interpreter BaZi menggunakan framework Zi Ping Zhen Quan (子平真詮).
 Tugas kamu: tulis narasi bahasa Indonesia yang mudah dipahami berdasarkan DATA TERSTRUKTUR yang diberikan.
@@ -22,25 +38,17 @@ ATURAN KETAT:
 6. Selalu sertakan: "Menurut framework Zi Ping Zhen Quan"
 """
 
+_CALENDAR_SYSTEM_PROMPT = """Kamu adalah interpreter BaZi menggunakan framework Zi Ping Zhen Quan (子平真詮).
+Tugas kamu: jelaskan interaksi antara chart natal pengguna dan pilar BaZi tanggal yang dipilih.
 
-_ERROR_PREFIX = "ERROR:"
-
-# Phrases that only appear in error messages, never in real narasi content
-_ERROR_PHRASES = [
-    "Gagal menghasilkan narasi",
-    "rate limited",
-    "API key tidak",
-    "Periksa API key",
-    "Semua model sedang",
-]
-
-# Model cascade: jika model utama 429, otomatis coba model berikutnya
-_MODEL_CASCADE = [
-    "qwen-3-235b-a22b-instruct-2507",
-    "gpt-oss-120b",
-    "zai-glm-4.7",
-    "llama3.1-8b",
-]
+ATURAN:
+- Bahasa Indonesia, conversational, mudah dipahami
+- Framing probabilistik: "kecenderungan", "pola", bukan "pasti"
+- Fokus: apa arti interaksi ini untuk aktivitas/energi pengguna pada tanggal tersebut
+- Jika tidak ada interaksi, jelaskan makna energi netral secara singkat
+- Maksimal 2 paragraf ringkas
+- Selalu sertakan: "Menurut framework Zi Ping Zhen Quan"
+"""
 
 
 def is_error_narasi(text: str) -> bool:
@@ -49,15 +57,11 @@ def is_error_narasi(text: str) -> bool:
         return True
     if text.startswith(_ERROR_PREFIX):
         return True
-    # Deteksi format error lama yang tersimpan di cache tanpa prefix "ERROR:"
     return any(phrase in text for phrase in _ERROR_PHRASES)
 
 
-async def _try_model(model: str, messages: list, max_tokens: int) -> tuple[str | None, bool]:
-    """
-    Returns (result, is_rate_limited).
-    result=None means rate limited (try next model).
-    """
+async def _try_model(url: str, api_key: str, model: str, messages: list, max_tokens: int) -> tuple[Optional[str], bool]:
+    """Returns (result, is_rate_limited). result=None jika rate limited."""
     payload = {
         "model": model,
         "messages": messages,
@@ -67,32 +71,32 @@ async def _try_model(model: str, messages: list, max_tokens: int) -> tuple[str |
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(
-                CEREBRAS_API_URL,
-                headers={"Authorization": f"Bearer {CEREBRAS_API_KEY}", "Content-Type": "application/json"},
+                url,
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                 json=payload,
             )
         if resp.status_code == 429:
-            logger.warning("Cerebras 429 pada model %s — mencoba model berikutnya", model)
+            logger.warning("429 pada model %s — mencoba model berikutnya", model)
             return None, True
         resp.raise_for_status()
         return resp.json()["choices"][0]["message"]["content"].strip(), False
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 429:
             return None, True
-        logger.error("Cerebras HTTP %s (model %s): %s", e.response.status_code, model, e.response.text)
+        logger.error("HTTP %s (model %s): %s", e.response.status_code, model, e.response.text)
         return f"{_ERROR_PREFIX} HTTP {e.response.status_code}.", False
     except Exception as e:
-        logger.error("Cerebras error (model %s): %s", model, e)
+        logger.error("Error (model %s): %s", model, e)
         return f"{_ERROR_PREFIX} {e}", False
 
 
-async def _call_cerebras(messages: list, max_tokens: int = 1000) -> str:
-    if not CEREBRAS_API_KEY:
-        logger.error("CEREBRAS_API_KEY tidak dikonfigurasi")
-        return f"{_ERROR_PREFIX} API key AI tidak dikonfigurasi."
-
-    for model in _MODEL_CASCADE:
-        result, rate_limited = await _try_model(model, messages, max_tokens)
+async def _call_ai(messages: list, max_tokens: int = 1000) -> str:
+    for url, key_env, model in _CASCADE:
+        api_key = os.getenv(key_env, "")
+        if not api_key:
+            logger.debug("Tidak ada API key untuk %s, skip model %s", key_env, model)
+            continue
+        result, rate_limited = await _try_model(url, api_key, model, messages, max_tokens)
         if not rate_limited:
             if result and not is_error_narasi(result):
                 logger.info("Narasi berhasil dengan model %s", model)
@@ -106,7 +110,7 @@ async def generate_narasi(chart_data: Dict[str, Any], section: str) -> str:
         {"role": "system", "content": _SYSTEM_PROMPT},
         {"role": "user", "content": json.dumps({"chart_data": chart_data, "section": section}, ensure_ascii=False)},
     ]
-    return await _call_cerebras(messages, max_tokens=1000)
+    return await _call_ai(messages, max_tokens=1000)
 
 
 async def generate_wish_analysis(chart_data: Dict[str, Any], wish_content: str) -> str:
@@ -122,15 +126,27 @@ ATURAN:
 - Maksimal 4 paragraf
 - Selalu kaitkan dengan data chart yang diberikan
 """
-    user_content = json.dumps({
-        "chart_data": chart_data,
-        "keinginan": wish_content,
-    }, ensure_ascii=False)
-
     messages = [
         {"role": "system", "content": system},
+        {"role": "user", "content": json.dumps({"chart_data": chart_data, "keinginan": wish_content}, ensure_ascii=False)},
+    ]
+    return await _call_ai(messages, max_tokens=1200)
+
+
+async def generate_calendar_narasi(
+    user_chart: Dict[str, Any],
+    calendar_pillars: Dict[str, Any],
+    interactions: list,
+    date_str: str,
+) -> str:
+    user_content = json.dumps({
+        "tanggal": date_str,
+        "chart_natal_pengguna": user_chart,
+        "pilar_kalender": calendar_pillars,
+        "interaksi": interactions,
+    }, ensure_ascii=False)
+    messages = [
+        {"role": "system", "content": _CALENDAR_SYSTEM_PROMPT},
         {"role": "user", "content": user_content},
     ]
-    return await _call_cerebras(messages, max_tokens=1200)
-
-
+    return await _call_ai(messages, max_tokens=600)

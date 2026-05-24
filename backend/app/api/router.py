@@ -11,13 +11,13 @@ from app.models.schemas import (
     ChartCalculateRequest, ChartResponse, CalendarResponse,
     NarasiGenerateRequest, PillarsSchema, PillarSchema,
     WishCreateRequest, WishResponse, WishAnalyzeRequest,
-    ProfileResponse,
+    ProfileResponse, CalendarNarasiRequest,
 )
 from app.models.domain import BaZiChart, TenGod, Wish, CachedNarasi
 from app.engine.calculator import get_bazi_chart, get_solar_term_date
 from app.engine.interactions import detect_calendar_interactions
 from app.engine.tables import HEAVENLY_STEMS_ELEMENT, HEAVENLY_STEMS_POLARITY
-from app.services.cerebras import generate_narasi, generate_wish_analysis, is_error_narasi
+from app.services.cerebras import generate_narasi, generate_wish_analysis, generate_calendar_narasi, is_error_narasi
 
 router = APIRouter()
 
@@ -202,6 +202,58 @@ async def _build_calendar_response(
         interactions=interactions,
         date_str=date_str,
     )
+
+
+@router.post("/calendar/narasi")
+async def get_calendar_narasi(req: CalendarNarasiRequest, db: AsyncSession = Depends(get_db)):
+    stmt = select(BaZiChart).where(BaZiChart.id == req.chart_id)
+    result = await db.execute(stmt)
+    db_chart = result.scalars().first()
+    if not db_chart:
+        raise HTTPException(status_code=404, detail="Chart not found")
+
+    try:
+        tz = pytz.timezone(req.timezone)
+    except pytz.UnknownTimeZoneError:
+        raise HTTPException(status_code=400, detail="Invalid timezone")
+
+    try:
+        d = date.fromisoformat(req.date_str)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="date_str must be YYYY-MM-DD")
+
+    dt_aware = tz.localize(datetime(d.year, d.month, d.day, 12, 0))
+    cal = get_bazi_chart(dt_aware)
+
+    user_dict = {
+        "pillars": {
+            "year":  {"branch": db_chart.year_branch},
+            "month": {"branch": db_chart.month_branch},
+            "day":   {"branch": db_chart.day_branch},
+            "hour":  {"branch": db_chart.hour_branch},
+        }
+    }
+    interactions_raw = detect_calendar_interactions(user_dict, cal)
+    interactions_list = [
+        {"type": i.type, "user_branch": i.user_branch, "calendar_branch": i.calendar_branch, "description": i.description}
+        for i in interactions_raw
+    ]
+
+    calendar_pillars = {
+        "year":  {"stem": cal["pillars"]["year"]["stem"],  "branch": cal["pillars"]["year"]["branch"]},
+        "month": {"stem": cal["pillars"]["month"]["stem"], "branch": cal["pillars"]["month"]["branch"]},
+        "day":   {"stem": cal["pillars"]["day"]["stem"],   "branch": cal["pillars"]["day"]["branch"]},
+    }
+
+    narasi = await generate_calendar_narasi(
+        _build_chart_dict(db_chart), calendar_pillars, interactions_list, req.date_str
+    )
+
+    if is_error_narasi(narasi):
+        msg = narasi.replace("ERROR: ", "", 1)
+        raise HTTPException(status_code=503, detail=msg)
+
+    return {"narasi": narasi}
 
 
 # ─── Narasi (profile sections) ────────────────────────────────────────────────

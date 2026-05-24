@@ -83,3 +83,8 @@ class CachedNarasiResponse(BaseModel):
 class ProfileResponse(BaseModel):
     chart: ChartResponse
     cached_sections: Dict[str, str]
+
+class CalendarNarasiRequest(BaseModel):
+    chart_id: str
+    date_str: str
+    timezone: str = "Asia/Jakarta"

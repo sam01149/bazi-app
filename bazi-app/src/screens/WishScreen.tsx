@@ -26,7 +26,7 @@ function formatDate(iso: string): string {
 }
 
 export default function WishScreen() {
-  const { chartId } = useChart();
+  const { chartId, loading: ctxLoading } = useChart();
   const [wishes,     setWishes]     = useState<Wish[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [inputText,  setInputText]  = useState('');
@@ -36,6 +36,7 @@ export default function WishScreen() {
 
   const fetchWishes = useCallback(async () => {
     if (!chartId) { setLoading(false); return; }
+    setLoading(true);
     try {
       const res = await axios.get(`${API_URL}/wishes?chart_id=${chartId}`);
       setWishes(res.data);
@@ -46,7 +47,9 @@ export default function WishScreen() {
     }
   }, [chartId]);
 
-  useEffect(() => { fetchWishes(); }, [fetchWishes]);
+  useEffect(() => {
+    if (!ctxLoading) fetchWishes();
+  }, [ctxLoading, fetchWishes]);
 
   const saveWish = async () => {
     const text = inputText.trim();
@@ -102,6 +105,14 @@ export default function WishScreen() {
   };
 
   const toggleExpand = (id: string) => setExpandedId(prev => prev === id ? null : id);
+
+  if (ctxLoading) {
+    return (
+      <View style={styles.noChartContainer}>
+        <ActivityIndicator color={C.gold} size="large" />
+      </View>
+    );
+  }
 
   if (!chartId) {
     return (

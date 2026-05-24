@@ -260,8 +260,20 @@ async def get_calendar_narasi(req: CalendarNarasiRequest, db: AsyncSession = Dep
         "day":   {"stem": cal["pillars"]["day"]["stem"],   "branch": cal["pillars"]["day"]["branch"]},
     }
 
+    day_stem = db_chart.day_stem
+    user_chart_for_ai = {
+        "day_master": f"{day_stem} {HEAVENLY_STEMS_ELEMENT.get(day_stem, '')} {HEAVENLY_STEMS_POLARITY.get(day_stem, '')}".strip(),
+        "strength": db_chart.day_master_strength,
+        "pillars": {
+            "year":  {"stem": db_chart.year_stem,  "branch": db_chart.year_branch},
+            "month": {"stem": db_chart.month_stem, "branch": db_chart.month_branch},
+            "day":   {"stem": db_chart.day_stem,   "branch": db_chart.day_branch},
+            "hour":  {"stem": db_chart.hour_stem,  "branch": db_chart.hour_branch},
+        },
+    }
+
     narasi = await generate_calendar_narasi(
-        _build_chart_dict(db_chart), calendar_pillars, interactions_list, req.date_str
+        user_chart_for_ai, calendar_pillars, interactions_list, req.date_str
     )
 
     if is_error_narasi(narasi):
@@ -414,8 +426,18 @@ async def analyze_wish(wish_id: str, req: WishAnalyzeRequest, db: AsyncSession =
         raise HTTPException(status_code=404, detail="Chart not found")
 
     ten_gods_map = {tg.position: tg.ten_god for tg in db_chart.ten_gods}
-    chart_dict = _build_chart_dict(db_chart)
-    chart_dict["ten_gods"] = ten_gods_map
+    day_stem = db_chart.day_stem
+    chart_dict = {
+        "day_master": f"{day_stem} {HEAVENLY_STEMS_ELEMENT.get(day_stem, '')} {HEAVENLY_STEMS_POLARITY.get(day_stem, '')}".strip(),
+        "strength": db_chart.day_master_strength,
+        "pillars": {
+            "year":  {"stem": db_chart.year_stem,  "branch": db_chart.year_branch},
+            "month": {"stem": db_chart.month_stem, "branch": db_chart.month_branch},
+            "day":   {"stem": db_chart.day_stem,   "branch": db_chart.day_branch},
+            "hour":  {"stem": db_chart.hour_stem,  "branch": db_chart.hour_branch},
+        },
+        "ten_gods": ten_gods_map,
+    }
 
     analysis = await generate_wish_analysis(chart_dict, wish.content)
     wish.analysis = analysis

@@ -239,6 +239,9 @@ git push hf master:main
 - Update: prompt AI sekarang dipisah jadi 3 blok utama plus template payload yang konsisten di [bazi_prompt.md](bazi_prompt.md)
 - Update: prompt AI disederhanakan lagi agar istilah teknis lebih mudah dipahami dan dijelaskan singkat jika dipakai
 - Update: prompt AI profile diganti total ke `PROFILE_SYSTEM_PROMPT` — BaZi Strategic Analyst dengan 6 seksi + Life Strategy Snapshot; framing probabilistik wajib; single comprehensive call per chart; day_master dikirim lengkap (stem + element + polarity); max_tokens naik ke 2000
+- Update: prompt AI kalender diganti ke `TIME_SYSTEM_PROMPT` — BaZi Tactical Interpreter; framing probabilistik wajib; interpretasi interaksi dari sudut Day Master; tutup dengan tendensi taktis hari itu; "Kondisi Netral" jika tidak ada interaksi; payload bersih tanpa birth_timezone
+- Update: prompt AI keinginan diganti ke `WISH_SYSTEM_PROMPT` — analisis berbasis Ten God yang diaktivasi keinginan; keselarasan struktural + friction point; tutup dengan Alignment score; kontradiksi "langkah bantu vs no motivasi" dihapus; payload bersih tanpa birth_timezone
+- Refactor: `BASE_PROMPT`, `STRATEGY_TASK_PROMPT`, `TIME_TASK_PROMPT`, `_compose_system_prompt` dihapus — semua prompt sekarang standalone
 - Update: ProfileScreen — 5 tombol narasi digabung jadi 1 tombol "Analisis Lengkap"; backend narasi di-cache dengan key `full_analysis`
 - Update: logo diganti dari logo.svg ke logo.png (web + native pakai Image component React Native)
 

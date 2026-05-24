@@ -25,8 +25,50 @@ ATURAN KETAT:
 
 _ERROR_PREFIX = "ERROR:"
 
+# Model cascade: jika model utama 429, otomatis coba model berikutnya
+_MODEL_CASCADE = [
+    "qwen-3-235b-a22b-instruct-2507",
+    "gpt-oss-120b",
+    "zai-glm-4.7",
+    "llama3.1-8b",
+]
+
+
 def is_error_narasi(text: str) -> bool:
     return text.startswith(_ERROR_PREFIX)
+
+
+async def _try_model(model: str, messages: list, max_tokens: int) -> tuple[str | None, bool]:
+    """
+    Returns (result, is_rate_limited).
+    result=None means rate limited (try next model).
+    """
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": 0.7,
+        "max_tokens": max_tokens,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                CEREBRAS_API_URL,
+                headers={"Authorization": f"Bearer {CEREBRAS_API_KEY}", "Content-Type": "application/json"},
+                json=payload,
+            )
+        if resp.status_code == 429:
+            logger.warning("Cerebras 429 pada model %s — mencoba model berikutnya", model)
+            return None, True
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"].strip(), False
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 429:
+            return None, True
+        logger.error("Cerebras HTTP %s (model %s): %s", e.response.status_code, model, e.response.text)
+        return f"{_ERROR_PREFIX} HTTP {e.response.status_code}.", False
+    except Exception as e:
+        logger.error("Cerebras error (model %s): %s", model, e)
+        return f"{_ERROR_PREFIX} {e}", False
 
 
 async def _call_cerebras(messages: list, max_tokens: int = 1000) -> str:
@@ -34,45 +76,14 @@ async def _call_cerebras(messages: list, max_tokens: int = 1000) -> str:
         logger.error("CEREBRAS_API_KEY tidak dikonfigurasi")
         return f"{_ERROR_PREFIX} API key AI tidak dikonfigurasi."
 
-    payload = {
-        "model": "qwen-3-235b-a22b-instruct-2507",
-        "messages": messages,
-        "temperature": 0.7,
-        "max_tokens": max_tokens,
-    }
+    for model in _MODEL_CASCADE:
+        result, rate_limited = await _try_model(model, messages, max_tokens)
+        if not rate_limited:
+            if result and not is_error_narasi(result):
+                logger.info("Narasi berhasil dengan model %s", model)
+            return result or f"{_ERROR_PREFIX} Tidak ada respons dari model."
 
-    # Retry up to 3 times with backoff for rate-limit (429) responses
-    for attempt in range(3):
-        try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                resp = await client.post(
-                    CEREBRAS_API_URL,
-                    headers={"Authorization": f"Bearer {CEREBRAS_API_KEY}", "Content-Type": "application/json"},
-                    json=payload,
-                )
-
-            if resp.status_code == 429:
-                retry_after = int(resp.headers.get("Retry-After", 2 ** (attempt + 1) * 3))
-                logger.warning("Cerebras 429 rate limit — menunggu %ss (attempt %d/3)", retry_after, attempt + 1)
-                if attempt < 2:
-                    await asyncio.sleep(retry_after)
-                    continue
-                return f"{_ERROR_PREFIX} Rate limit tercapai. Tunggu beberapa detik lalu coba lagi."
-
-            resp.raise_for_status()
-            return resp.json()["choices"][0]["message"]["content"].strip()
-
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 429 and attempt < 2:
-                await asyncio.sleep(2 ** (attempt + 1) * 3)
-                continue
-            logger.error("Cerebras HTTP %s: %s", e.response.status_code, e.response.text)
-            return f"{_ERROR_PREFIX} HTTP {e.response.status_code}."
-        except Exception as e:
-            logger.error("Cerebras error: %s", e)
-            return f"{_ERROR_PREFIX} {e}"
-
-    return f"{_ERROR_PREFIX} Gagal setelah 3 percobaan."
+    return f"{_ERROR_PREFIX} Semua model sedang rate limited. Coba lagi dalam beberapa menit."
 
 
 async def generate_narasi(chart_data: Dict[str, Any], section: str) -> str:

@@ -135,8 +135,9 @@ export default function ProfileScreen() {
       const res = await axios.post(`${API_URL}/narasi/generate`, { chart_id: chartId, section });
       setNarasi(res.data.narasi);
       setCachedSections(prev => ({ ...prev, [section]: res.data.narasi }));
-    } catch {
-      setNarasi('Gagal menghasilkan narasi. Silakan coba lagi.');
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail;
+      setNarasi(detail ?? 'Gagal menghasilkan narasi. Silakan coba lagi.');
     } finally {
       setNarasiLoading(false);
     }

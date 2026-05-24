@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import asyncio
 import httpx
 from typing import Dict, Any
 
@@ -22,10 +23,16 @@ ATURAN KETAT:
 """
 
 
+_ERROR_PREFIX = "ERROR:"
+
+def is_error_narasi(text: str) -> bool:
+    return text.startswith(_ERROR_PREFIX)
+
+
 async def _call_cerebras(messages: list, max_tokens: int = 1000) -> str:
     if not CEREBRAS_API_KEY:
         logger.error("CEREBRAS_API_KEY tidak dikonfigurasi")
-        return "API key AI tidak dikonfigurasi. Tambahkan CEREBRAS_API_KEY ke environment."
+        return f"{_ERROR_PREFIX} API key AI tidak dikonfigurasi."
 
     payload = {
         "model": "qwen-3-235b-a22b-instruct-2507",
@@ -34,21 +41,38 @@ async def _call_cerebras(messages: list, max_tokens: int = 1000) -> str:
         "max_tokens": max_tokens,
     }
 
-    try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(
-                CEREBRAS_API_URL,
-                headers={"Authorization": f"Bearer {CEREBRAS_API_KEY}", "Content-Type": "application/json"},
-                json=payload,
-            )
-        resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"].strip()
-    except httpx.HTTPStatusError as e:
-        logger.error("Cerebras HTTP %s: %s", e.response.status_code, e.response.text)
-        return f"Gagal menghasilkan narasi (HTTP {e.response.status_code}). Periksa API key dan coba lagi."
-    except Exception as e:
-        logger.error("Cerebras error: %s", e)
-        return f"Gagal menghasilkan narasi: {e}"
+    # Retry up to 3 times with backoff for rate-limit (429) responses
+    for attempt in range(3):
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.post(
+                    CEREBRAS_API_URL,
+                    headers={"Authorization": f"Bearer {CEREBRAS_API_KEY}", "Content-Type": "application/json"},
+                    json=payload,
+                )
+
+            if resp.status_code == 429:
+                retry_after = int(resp.headers.get("Retry-After", 2 ** (attempt + 1) * 3))
+                logger.warning("Cerebras 429 rate limit — menunggu %ss (attempt %d/3)", retry_after, attempt + 1)
+                if attempt < 2:
+                    await asyncio.sleep(retry_after)
+                    continue
+                return f"{_ERROR_PREFIX} Rate limit tercapai. Tunggu beberapa detik lalu coba lagi."
+
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"].strip()
+
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 429 and attempt < 2:
+                await asyncio.sleep(2 ** (attempt + 1) * 3)
+                continue
+            logger.error("Cerebras HTTP %s: %s", e.response.status_code, e.response.text)
+            return f"{_ERROR_PREFIX} HTTP {e.response.status_code}."
+        except Exception as e:
+            logger.error("Cerebras error: %s", e)
+            return f"{_ERROR_PREFIX} {e}"
+
+    return f"{_ERROR_PREFIX} Gagal setelah 3 percobaan."
 
 
 async def generate_narasi(chart_data: Dict[str, Any], section: str) -> str:

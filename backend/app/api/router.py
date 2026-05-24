@@ -17,7 +17,7 @@ from app.models.domain import BaZiChart, TenGod, Wish, CachedNarasi
 from app.engine.calculator import get_bazi_chart, get_solar_term_date
 from app.engine.interactions import detect_calendar_interactions
 from app.engine.tables import HEAVENLY_STEMS_ELEMENT, HEAVENLY_STEMS_POLARITY
-from app.services.cerebras import generate_narasi, generate_wish_analysis
+from app.services.cerebras import generate_narasi, generate_wish_analysis, is_error_narasi
 
 router = APIRouter()
 
@@ -215,14 +215,14 @@ async def generate_narasi_endpoint(req: NarasiGenerateRequest, db: AsyncSession 
     if not db_chart:
         raise HTTPException(status_code=404, detail="Chart not found")
 
-    # Return cached version if available
+    # Return cached version if available (skip if previously cached an error)
     cached_stmt = select(CachedNarasi).where(
         CachedNarasi.chart_id == req.chart_id,
         CachedNarasi.section == req.section,
     )
     cached_result = await db.execute(cached_stmt)
     cached = cached_result.scalars().first()
-    if cached:
+    if cached and not is_error_narasi(cached.narasi_text):
         return {"narasi": cached.narasi_text, "cached": True}
 
     ten_gods_map = {tg.position: tg.ten_god for tg in db_chart.ten_gods}
@@ -231,12 +231,23 @@ async def generate_narasi_endpoint(req: NarasiGenerateRequest, db: AsyncSession 
 
     narration = await generate_narasi(structured_data, req.section)
 
-    # Cache the result
-    db.add(CachedNarasi(
-        chart_id=req.chart_id,
-        section=req.section,
-        narasi_text=narration,
-    ))
+    if is_error_narasi(narration):
+        # Delete bad cache entry if it exists so next retry can try again
+        if cached:
+            await db.delete(cached)
+            await db.commit()
+        # Return user-friendly error (strip internal prefix)
+        msg = narration.replace("ERROR: ", "", 1)
+        raise HTTPException(status_code=503, detail=msg)
+
+    if cached:
+        cached.narasi_text = narration
+    else:
+        db.add(CachedNarasi(
+            chart_id=req.chart_id,
+            section=req.section,
+            narasi_text=narration,
+        ))
     await db.commit()
 
     return {"narasi": narration, "cached": False}

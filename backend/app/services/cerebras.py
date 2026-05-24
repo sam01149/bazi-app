@@ -28,7 +28,7 @@ async def _call_cerebras(messages: list, max_tokens: int = 1000) -> str:
         return "API key AI tidak dikonfigurasi. Tambahkan CEREBRAS_API_KEY ke environment."
 
     payload = {
-        "model": "llama3.1-8b",
+        "model": "qwen-3-235b-a22b-instruct-2507",
         "messages": messages,
         "temperature": 0.7,
         "max_tokens": max_tokens,

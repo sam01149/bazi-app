@@ -234,6 +234,7 @@ git push hf master:main
 - Feat: SambaNova AI cascade — `Meta-Llama-3.1-405B-Instruct` sebagai model utama, `Meta-Llama-3.3-70B-Instruct` sebagai fallback, lalu Cerebras cascade; env var `SAMBANOVA_API_KEY`
 - Feat: CalendarScreen — "Hubungan dengan Chartmu" kini dilengkapi narasi AI (POST `/calendar/narasi`); auto-fetch saat ganti tanggal, reset otomatis, retry button jika error; tidak di-cache DB
 - Fix: WishScreen — keinginan hilang saat refresh karena `ctxLoading` belum dicek; sekarang nunggu context selesai load sebelum fetch/render
+- Fix: cascade AI di `services/cerebras.py` — semua error provider selain 400/422 sekarang lanjut ke model berikutnya, jadi SambaNova auth/model error tetap fallback ke Cerebras
 
 ### Belum Ada / Known Issues ⚠️
 - **Tidak ada unit tests** — engine calculation belum ditest

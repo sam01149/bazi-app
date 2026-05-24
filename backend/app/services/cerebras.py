@@ -61,7 +61,7 @@ def is_error_narasi(text: str) -> bool:
 
 
 async def _try_model(url: str, api_key: str, model: str, messages: list, max_tokens: int) -> tuple[Optional[str], bool]:
-    """Returns (result, is_rate_limited). result=None jika rate limited."""
+    """Returns (result, try_next). result=None + try_next=True → lanjut ke model berikutnya."""
     payload = {
         "model": model,
         "messages": messages,
@@ -75,19 +75,18 @@ async def _try_model(url: str, api_key: str, model: str, messages: list, max_tok
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                 json=payload,
             )
-        if resp.status_code == 429:
-            logger.warning("429 pada model %s — mencoba model berikutnya", model)
-            return None, True
-        resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"].strip(), False
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 429:
-            return None, True
-        logger.error("HTTP %s (model %s): %s", e.response.status_code, model, e.response.text)
-        return f"{_ERROR_PREFIX} HTTP {e.response.status_code}.", False
+        if resp.status_code == 200:
+            return resp.json()["choices"][0]["message"]["content"].strip(), False
+        if resp.status_code in (400, 422):
+            # Payload kita yang salah — bukan masalah provider, stop cascade
+            logger.error("Bad request (model %s): %s", model, resp.text[:300])
+            return f"{_ERROR_PREFIX} Request tidak valid.", False
+        # Semua error lain (401, 403, 404, 429, 5xx) → coba model berikutnya
+        logger.warning("HTTP %s pada model %s — mencoba model berikutnya", resp.status_code, model)
+        return None, True
     except Exception as e:
-        logger.error("Error (model %s): %s", model, e)
-        return f"{_ERROR_PREFIX} {e}", False
+        logger.warning("Exception pada model %s (%s) — mencoba model berikutnya", model, e)
+        return None, True
 
 
 async def _call_ai(messages: list, max_tokens: int = 1000) -> str:

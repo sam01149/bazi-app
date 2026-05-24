@@ -254,6 +254,12 @@ git push hf master:main
 - Update: kolom baru `bazi_charts.gender`, `bazi_charts.ge_ju`, `bazi_charts.yong_shen`, `ten_gods.source_branch` ditambahkan via inline migration di `main.py` lifespan (`ALTER TABLE IF NOT EXISTS`)
 - Update: prompt AI (PROFILE, WISH, TIME) diperbarui untuk memanfaatkan ge_ju, yong_shen, void_branches, hidden_ten_gods, stem_combinations, active_luck_pillar
 - Feat: **Solar Terms (节气) di CalendarScreen** — 24 节气 ditampilkan sebagai label 2-karakter Chinese di bawah angka hari di grid kalender; fetch dari `/api/solar-terms/year/{year}` (cache per tahun, boundary Jan/Des pre-fetch tahun sebelah); UTC ke local date via `Intl.DateTimeFormat`; badge gold di header tanggal yang dipilih jika hari itu adalah 节气; cell height 52px (naik dari 40px)
+- Feat: **UX untuk user awam** — lapisan bahasa Indonesia di atas data teknis:
+  - **Energy Indicator** (CalendarScreen): card berwarna + 1-kalimat summary di atas pillars berdasarkan interaction types (red=challenging, amber=caution, teal=good, muted=neutral); muncul saat chartId present
+  - **Plain Language Interactions** (CalendarScreen): kalimat aksi italic di bawah setiap interaction card, rule-based tanpa AI
+  - **Solar Term Modal** (CalendarScreen): tap badge 节气 di header → InfoModal dengan nama, pinyin, musim, dan deskripsi Indonesia
+  - **Term Tooltips** (ProfileScreen): tombol ⓘ di 7 istilah teknis (Day Master, Empat Pilar, Ge Ju, Yong Shen, Stem Combo, Luck Pillars, Void Branches) → InfoModal penjelasan plain Indonesian
+  - **InfoModal** (`src/components/InfoModal.tsx`): shared reusable modal component (fade overlay, card tema navy+gold, tap backdrop untuk tutup)
 
 ### Belum Ada / Known Issues ⚠️
 - **Tidak ada unit tests** — engine calculation belum ditest

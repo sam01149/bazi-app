@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 from datetime import date, time, datetime
 from uuid import UUID
 
@@ -7,6 +7,7 @@ class ChartCalculateRequest(BaseModel):
     birth_date: date
     birth_time: Optional[time] = None
     birth_timezone: str
+    gender: Optional[str] = None  # 'male' or 'female'
 
 class NarasiGenerateRequest(BaseModel):
     chart_id: str
@@ -29,6 +30,12 @@ class TenGodSchema(BaseModel):
     element: str
     polarity: str
 
+class LuckPillarSchema(BaseModel):
+    stem: str
+    branch: str
+    age_start: float
+    order_index: int
+
 class ChartResponse(BaseModel):
     id: str
     user_id: Optional[str] = None
@@ -37,6 +44,14 @@ class ChartResponse(BaseModel):
     pillars: PillarsSchema
     ten_gods: Dict[str, str]
     day_master_strength: Optional[str] = None
+    gender: Optional[str] = None
+    ge_ju: Optional[str] = None
+    yong_shen: Optional[str] = None
+    void_branches: Optional[List[str]] = None
+    stem_combinations: Optional[List[Dict[str, Any]]] = None
+    hidden_ten_gods: Optional[Dict[str, Any]] = None
+    luck_pillars: Optional[List[LuckPillarSchema]] = None
+    active_luck_pillar: Optional[LuckPillarSchema] = None
 
     class Config:
         from_attributes = True

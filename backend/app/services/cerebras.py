@@ -38,15 +38,22 @@ Input yang kamu terima:
 - pillars: year/month/day/hour stem + branch
 - ten_gods: dominant gods dari stem yang tersedia
 - strength: Strong / Moderate / Weak
-- active_luck_pillar: stem + branch + dekade aktif (jika tersedia)
+- ge_ju: struktur dominan chart (格局) dari hidden stem utama bulan
+- yong_shen: useful god (用神) yang paling dibutuhkan chart
+- void_branches: branch yang masuk 空亡 (kehilangan efektivitas)
+- hidden_ten_gods: ten god dari hidden stem setiap branch
+- stem_combinations: pasangan stem yang saling mengikat (天干合)
+- active_luck_pillar: stem + branch + usia mulai dekade aktif (jika tersedia)
 
 Analisis dalam urutan ini:
-1. Core identity — Day Master dengan analogi konkret
+1. Core identity — Day Master + Ge Ju dengan analogi konkret; apa yang dikejar struktur ini
 2. Element balance — dominasi/defisiensi + dampak ke pola hidup nyata
-3. Kekuatan & blind spots — 3 aset struktural, 3 pola sabotase diri
-4. Karir & kekayaan — lingkungan kerja optimal, gaya menghasilkan
-5. Relasi — pola emosional berdasarkan ten gods (HANYA dari data yang tersedia)
-6. Luck cycle — tema dekade aktif + strategi (HANYA jika active_luck_pillar tersedia)
+3. Useful God (用神) — peran Yong Shen dalam chart; elemen apa yang mendukung vs melemahkan
+4. Kekuatan & blind spots — 3 aset struktural, 3 pola sabotase diri (gunakan hidden ten gods jika relevan)
+5. Karir & kekayaan — lingkungan kerja optimal, gaya menghasilkan berdasarkan Ge Ju
+6. Relasi — pola emosional berdasarkan ten gods (HANYA dari data yang tersedia)
+7. Luck cycle — tema dekade aktif + strategi untuk Yong Shen (HANYA jika active_luck_pillar tersedia)
+   Jika ada void_branches: identifikasi ten god mana yang void dan dampaknya
 
 Tutup dengan: Life Strategy Snapshot
 Format: core nature | best arena | biggest trap | long-term winning move"""
@@ -58,14 +65,15 @@ DILARANG: afirmasi palsu, validasi emosional, dan bahasa motivasi. Jika keingina
 BAHASA OUTPUT: Bahasa Indonesia.
 
 Input yang kamu terima:
-- chart: day_master (stem + elemen + polarity), strength, pillars, ten_gods
+- chart: day_master (stem + elemen + polarity), strength, ge_ju, yong_shen, pillars, ten_gods
 - keinginan: teks keinginan pengguna
 
 Analisis dalam urutan ini:
 1. Ten God yang diaktivasi — keinginan ini menyentuh Ten God mana (Wealth, Officer, Output, Resource, Companion)?
-2. Keselarasan struktural — apakah Ten God tersebut hadir, kuat, atau defisien di chart?
-3. Friction point — elemen atau Ten God mana yang berpotensi menghambat
-4. Tendensi outcome — pola probabilistik berdasarkan struktur chart
+2. Keselarasan dengan Yong Shen — apakah keinginan ini memperkuat atau melawan Yong Shen chart?
+3. Keselarasan struktural — apakah Ten God tersebut hadir, kuat, atau defisien di chart?
+4. Friction point — elemen atau Ten God mana yang berpotensi menghambat
+5. Tendensi outcome — pola probabilistik berdasarkan struktur chart dan Ge Ju
 
 Tutup dengan satu baris:
 Alignment: [Tinggi / Sedang / Rendah] — [alasan singkat]
@@ -79,7 +87,7 @@ DILARANG: interpretasi dari data yang tidak tersedia dalam input. Eliminasi baha
 BAHASA OUTPUT: Bahasa Indonesia.
 
 Input yang kamu terima:
-- chart_natal: day_master (stem + elemen + polarity), strength, pillars natal
+- chart_natal: day_master (stem + elemen + polarity), strength, ge_ju, yong_shen, pillars natal
 - pilar_kalender: stem + branch untuk year/month/day tanggal tersebut
 - interaksi: list clash/combination/harm/penalty antara branch natal vs kalender (bisa kosong)
 - tanggal: tanggal yang dianalisis
@@ -87,7 +95,7 @@ Input yang kamu terima:
 Jika interaksi kosong: output hanya "Kondisi Netral — tidak ada tekanan atau dorongan signifikan dari konfigurasi hari ini." Hentikan elaborasi.
 
 Jika ada interaksi, analisis dalam urutan ini:
-1. Baca interaksi — mana yang menekan Day Master, mana yang mendukung
+1. Baca interaksi — mana yang menekan atau mendukung Yong Shen (用神) chart
 2. Dampak ke pola konkret — area mana yang cenderung terdampak (keputusan, relasi, produktivitas, energi)
 3. Tutup dengan 1 kalimat tendensi taktis hari itu untuk orang ini
 
@@ -121,10 +129,8 @@ async def _try_model(url: str, api_key: str, model: str, messages: list, max_tok
         if resp.status_code == 200:
             return resp.json()["choices"][0]["message"]["content"].strip(), False
         if resp.status_code in (400, 422):
-            # Payload kita yang salah — bukan masalah provider, stop cascade
             logger.error("Bad request (model %s): %s", model, resp.text[:300])
             return f"{_ERROR_PREFIX} Request tidak valid.", False
-        # Semua error lain (401, 403, 404, 429, 5xx) → coba model berikutnya
         logger.warning("HTTP %s pada model %s — mencoba model berikutnya", resp.status_code, model)
         return None, True
     except Exception as e:
@@ -153,8 +159,15 @@ async def generate_narasi(chart_data: Dict[str, Any], section: str) -> str:
         "pillars": chart_data.get("pillars", {}),
         "ten_gods": chart_data.get("ten_gods", {}),
         "strength": chart_data.get("strength", chart_data.get("day_master_strength", "")),
+        "ge_ju": chart_data.get("ge_ju"),
+        "yong_shen": chart_data.get("yong_shen"),
+        "void_branches": chart_data.get("void_branches"),
+        "hidden_ten_gods": chart_data.get("hidden_ten_gods"),
+        "stem_combinations": chart_data.get("stem_combinations"),
         "active_luck_pillar": chart_data.get("active_luck_pillar"),
     }
+    # Remove None values to keep payload clean
+    payload = {k: v for k, v in payload.items() if v is not None}
     messages = [
         {"role": "system", "content": PROFILE_SYSTEM_PROMPT},
         {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
@@ -163,9 +176,18 @@ async def generate_narasi(chart_data: Dict[str, Any], section: str) -> str:
 
 
 async def generate_wish_analysis(chart_data: Dict[str, Any], wish_content: str) -> str:
+    chart_payload = {
+        "day_master": chart_data.get("day_master", ""),
+        "strength": chart_data.get("strength", ""),
+        "ge_ju": chart_data.get("ge_ju"),
+        "yong_shen": chart_data.get("yong_shen"),
+        "pillars": chart_data.get("pillars", {}),
+        "ten_gods": chart_data.get("ten_gods", {}),
+    }
+    chart_payload = {k: v for k, v in chart_payload.items() if v is not None}
     messages = [
         {"role": "system", "content": WISH_SYSTEM_PROMPT},
-        {"role": "user", "content": json.dumps({"chart": chart_data, "keinginan": wish_content}, ensure_ascii=False)},
+        {"role": "user", "content": json.dumps({"chart": chart_payload, "keinginan": wish_content}, ensure_ascii=False)},
     ]
     return await _call_ai(messages, max_tokens=1200)
 
@@ -176,11 +198,19 @@ async def generate_calendar_narasi(
     interactions: list,
     date_str: str,
 ) -> str:
+    chart_payload = {
+        "day_master": user_chart.get("day_master", ""),
+        "strength": user_chart.get("strength", ""),
+        "ge_ju": user_chart.get("ge_ju"),
+        "yong_shen": user_chart.get("yong_shen"),
+        "pillars": user_chart.get("pillars", {}),
+    }
+    chart_payload = {k: v for k, v in chart_payload.items() if v is not None}
     messages = [
         {"role": "system", "content": TIME_SYSTEM_PROMPT},
         {"role": "user", "content": json.dumps({
             "tanggal": date_str,
-            "chart_natal": user_chart,
+            "chart_natal": chart_payload,
             "pilar_kalender": calendar_pillars,
             "interaksi": interactions,
         }, ensure_ascii=False)},

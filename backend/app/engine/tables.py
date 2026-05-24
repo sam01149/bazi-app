@@ -101,3 +101,23 @@ CONTROLS = {
     "Wood": "Earth", "Earth": "Water", "Water": "Fire",
     "Fire": "Metal", "Metal": "Wood",
 }
+
+# Heavenly Stem Combinations (天干合): pair → result element
+STEM_COMBINATIONS = [
+    ({"甲", "己"}, "Earth"),
+    ({"乙", "庚"}, "Metal"),
+    ({"丙", "辛"}, "Water"),
+    ({"丁", "壬"}, "Wood"),
+    ({"戊", "癸"}, "Fire"),
+]
+
+# Kong Wang (空亡): xun start index → [void_branch1, void_branch2]
+# Each 旬 starts at 甲 and uses 10 consecutive branches, leaving 2 void
+KONG_WANG = {
+    0:  ["戌", "亥"],   # 甲子旬
+    10: ["申", "酉"],   # 甲戌旬
+    20: ["午", "未"],   # 甲申旬
+    30: ["辰", "巳"],   # 甲午旬
+    40: ["寅", "卯"],   # 甲辰旬
+    50: ["子", "丑"],   # 甲寅旬
+}

@@ -196,7 +196,7 @@ git push hf master:main
 
 ---
 
-## Status Saat Ini (2026-05-24 — update 6)
+## Status Saat Ini (2026-05-24 — update 7)
 
 ### Sudah Selesai ✅
 - Kalkulasi semua pilar (Year, Month, Day, Hour)
@@ -245,9 +245,18 @@ git push hf master:main
 - Update: ProfileScreen — 5 tombol narasi digabung jadi 1 tombol "Analisis Lengkap"; backend narasi di-cache dengan key `full_analysis`
 - Update: logo diganti dari logo.svg ke logo.png (web + native pakai Image component React Native)
 
+- Feat: **Ge Ju (格局) + Yong Shen (用神)** — ditentukan dari dominant hidden stem bulan; Ge Ju = struktur dominan chart; Yong Shen = useful god berdasarkan Ge Ju + DM strength; disimpan ke `bazi_charts.ge_ju` dan `bazi_charts.yong_shen`; dikirim ke semua payload AI; ditampilkan di Day Master card frontend
+- Feat: **Luck Pillars (大運)** — dihitung dari gender + jarak ke solar term terdekat ÷ 3; arah maju/mundur berdasarkan gender × polaritas tahun; disimpan ke tabel `luck_pillars`; frontend menampilkan horizontal scroll dengan highlight pillar aktif; input gender di onboarding
+- Feat: **Hidden Stems Ten Gods (藏干十神)** — Ten God setiap hidden stem di semua branch; disimpan ke tabel `ten_gods` dengan `stem_or_branch="hidden"` dan `source_branch`; dominant TG ditampilkan di pillar grid; dikirim ke AI payload profil
+- Feat: **Heavenly Stem Combinations (天干合)** — deteksi 5 pasangan kombinasi (甲己→Earth, 乙庚→Metal, 丙辛→Water, 丁壬→Wood, 戊癸→Fire); ditampilkan sebagai section baru di profil; dikirim ke AI
+- Feat: **Kong Wang / 空亡** — branch void dihitung dari Day Pillar 旬 cycle; ditampilkan sebagai badge "空" di pillar grid + section tersendiri; dikirim ke AI
+- Refactor: `_build_chart_dict` dan `_build_chart_response` helpers dipisah di router; semua endpoint menggunakan helper yang sama
+- Update: kolom baru `bazi_charts.gender`, `bazi_charts.ge_ju`, `bazi_charts.yong_shen`, `ten_gods.source_branch` ditambahkan via inline migration di `main.py` lifespan (`ALTER TABLE IF NOT EXISTS`)
+- Update: prompt AI (PROFILE, WISH, TIME) diperbarui untuk memanfaatkan ge_ju, yong_shen, void_branches, hidden_ten_gods, stem_combinations, active_luck_pillar
+
 ### Belum Ada / Known Issues ⚠️
 - **Tidak ada unit tests** — engine calculation belum ditest
-- **Alembic migrations belum setup** — pakai `create_all()` (tables baru terbuat otomatis saat restart)
+- **Alembic migrations belum setup** — pakai `create_all()` + inline ALTER TABLE di lifespan
 - **Tidak ada multi-user** — satu device = satu chart (tidak ada login/akun)
 
 ---
@@ -365,13 +374,19 @@ Fase siklus DM di tiap branch: 长生 Growth → 沐浴 Bath → 冠带 Coronati
 
 ---
 
-### Urutan implementasi yang disarankan
+### Status Implementasi
 
 ```
-1A Ge Ju + Yong Shen  →  1B Luck Pillars  →  2A Hidden Stems  →  2B Stem Combinations  →  2C Kong Wang  →  3A/3B opsional
+✅ 1A Ge Ju + Yong Shen
+✅ 1B Luck Pillars
+✅ 2A Hidden Stems Ten Gods
+✅ 2B Heavenly Stem Combinations
+✅ 2C Kong Wang / 空亡
+⬜ 3A Special Stars / 神煞 (opsional)
+⬜ 3B 12 Life Stages / 十二运星 (opsional)
 ```
 
-Setiap fase berdiri sendiri dan langsung meningkatkan kualitas AI output tanpa harus menunggu fase berikutnya selesai.
+Semua fase fondasi (1A–2C) sudah diimplementasi. Setiap fitur berdiri sendiri dan langsung meningkatkan kualitas AI output.
 
 ### Backend
 ```powershell

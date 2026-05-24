@@ -1,7 +1,14 @@
 import os
 import datetime
 import pytz
-from app.engine.tables import *
+from app.engine.tables import (
+    HEAVENLY_STEMS, EARTHLY_BRANCHES,
+    HEAVENLY_STEMS_ELEMENT, HEAVENLY_STEMS_POLARITY,
+    EARTHLY_BRANCHES_ELEMENT, HIDDEN_STEMS,
+    SIX_CLASHES, SIX_COMBINATIONS, SIX_HARMS, THREE_COMBINATIONS,
+    THREE_PENALTIES, HOUR_BRANCHES, PRODUCES, CONTROLS,
+    STEM_COMBINATIONS, KONG_WANG,
+)
 
 # Try to import swisseph. It might fail locally without C++ tools,
 # but it will run fine inside the Docker container.
@@ -233,6 +240,162 @@ def calculate_day_master_strength(pillars: dict, day_master: str) -> str:
     if score >= -4:
         return "Moderate-Weak"
     return "Weak"
+
+_GE_JU_FROM_TEN_GOD = {
+    "比肩": "建禄格",
+    "劫財": "月刃格",
+    "食神": "食神格",
+    "傷官": "傷官格",
+    "偏財": "偏財格",
+    "正財": "正財格",
+    "偏官": "七殺格",
+    "正官": "正官格",
+    "偏印": "偏印格",
+    "正印": "正印格",
+}
+
+_YONG_SHEN_RULES = {
+    ("建禄格", True):  "官殺",
+    ("建禄格", False): "印綬",
+    ("月刃格", True):  "官殺",
+    ("月刃格", False): "印綬",
+    ("食神格", True):  "財星",
+    ("食神格", False): "印綬",
+    ("傷官格", True):  "財星",
+    ("傷官格", False): "印綬",
+    ("偏財格", True):  "官殺",
+    ("偏財格", False): "比劫",
+    ("正財格", True):  "官殺",
+    ("正財格", False): "比劫",
+    ("七殺格", True):  "食神",
+    ("七殺格", False): "印綬",
+    ("正官格", True):  "印綬",
+    ("正官格", False): "印綬",
+    ("偏印格", True):  "財星",
+    ("偏印格", False): "官殺",
+    ("正印格", True):  "財星",
+    ("正印格", False): "官殺",
+}
+
+
+def get_ge_ju(month_branch: str, day_master: str) -> str:
+    """Determine the structural pattern (格局) from the dominant hidden stem of the Month Branch."""
+    dominant_stem = HIDDEN_STEMS.get(month_branch, [""])[0]
+    if not dominant_stem:
+        return "未知格"
+    ten_god = calculate_ten_god(day_master, dominant_stem)
+    return _GE_JU_FROM_TEN_GOD.get(ten_god, f"{ten_god}格")
+
+
+def get_yong_shen(ge_ju: str, strength: str) -> str:
+    """Determine the Useful God (用神) based on structure and DM strength."""
+    is_strong = strength in ("Strong", "Moderate-Strong")
+    return _YONG_SHEN_RULES.get((ge_ju, is_strong), "需要判断")
+
+
+def get_hidden_stem_ten_gods(pillars: dict, day_master: str) -> dict:
+    """Return Ten Gods for all hidden stems in each pillar's branch."""
+    result = {}
+    for position in ("year", "month", "day", "hour"):
+        branch = pillars[position].get("branch", "")
+        if not branch:
+            continue
+        result[position] = [
+            {
+                "stem": hs,
+                "ten_god": calculate_ten_god(day_master, hs),
+                "element": HEAVENLY_STEMS_ELEMENT[hs],
+                "polarity": HEAVENLY_STEMS_POLARITY[hs],
+            }
+            for hs in HIDDEN_STEMS.get(branch, [])
+        ]
+    return result
+
+
+def get_kong_wang(day_stem: str, day_branch: str) -> list:
+    """Return the two void branches (空亡) for the Day Pillar's 旬 cycle."""
+    ds_idx = HEAVENLY_STEMS.index(day_stem)
+    db_idx = EARTHLY_BRANCHES.index(day_branch)
+    jiazi = next((i for i in range(60) if i % 10 == ds_idx and i % 12 == db_idx), None)
+    if jiazi is None:
+        return []
+    return KONG_WANG.get((jiazi // 10) * 10, [])
+
+
+def get_luck_pillars(
+    birth_dt: datetime.datetime,
+    year_stem: str,
+    month_stem: str,
+    month_branch: str,
+    gender: str,
+) -> list:
+    """
+    Calculate 10 Luck Pillars (大運).
+    Direction: Male+Yang or Female+Yin = forward; Male+Yin or Female+Yang = backward.
+    Age start = days to nearest major solar term ÷ 3.
+    """
+    year_polarity = HEAVENLY_STEMS_POLARITY[year_stem]
+    direction = 1 if (
+        (gender.lower() == "male" and year_polarity == "Yang") or
+        (gender.lower() == "female" and year_polarity == "Yin")
+    ) else -1
+
+    birth_utc = birth_dt.astimezone(pytz.UTC)
+    birth_year = birth_utc.year
+
+    # Collect even-indexed (major) solar terms from 2 years around birth
+    candidate_terms = []
+    for y in range(birth_year - 1, birth_year + 2):
+        for term_idx in range(0, 24, 2):
+            candidate_terms.append(get_solar_term_date(y, term_idx))
+    candidate_terms.sort()
+
+    if direction == 1:
+        nearest = next((t for t in candidate_terms if t > birth_utc), None)
+    else:
+        nearest = next((t for t in reversed(candidate_terms) if t < birth_utc), None)
+
+    if nearest is None:
+        return []
+
+    delta_days = abs((nearest - birth_utc).total_seconds() / 86400.0)
+    age_start = delta_days / 3.0
+
+    # Find jiazi index of month pillar for 60-cycle navigation
+    ms_idx = HEAVENLY_STEMS.index(month_stem)
+    mb_idx = EARTHLY_BRANCHES.index(month_branch)
+    month_jiazi = next(i for i in range(60) if i % 10 == ms_idx and i % 12 == mb_idx)
+
+    pillars = []
+    for i in range(10):
+        lp_jiazi = (month_jiazi + direction * (i + 1)) % 60
+        pillars.append({
+            "stem": HEAVENLY_STEMS[lp_jiazi % 10],
+            "branch": EARTHLY_BRANCHES[lp_jiazi % 12],
+            "age_start": round(age_start + i * 10, 1),
+            "order_index": i,
+        })
+    return pillars
+
+
+def get_active_luck_pillar(luck_pillars: list, birth_dt: datetime.datetime) -> dict | None:
+    """Return the currently active Luck Pillar based on age today."""
+    if not luck_pillars:
+        return None
+    if birth_dt.tzinfo is None:
+        birth_utc = pytz.UTC.localize(birth_dt)
+    else:
+        birth_utc = birth_dt.astimezone(pytz.UTC)
+    today_utc = datetime.datetime.now(pytz.UTC)
+    age_years = (today_utc - birth_utc).total_seconds() / (365.25 * 24 * 3600)
+    active = None
+    for p in luck_pillars:
+        if p["age_start"] <= age_years:
+            active = p
+        else:
+            break
+    return active
+
 
 def get_bazi_chart(dt: datetime.datetime) -> dict:
     """

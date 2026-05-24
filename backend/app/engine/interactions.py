@@ -1,4 +1,4 @@
-from app.engine.tables import SIX_CLASHES, SIX_COMBINATIONS, SIX_HARMS
+from app.engine.tables import SIX_CLASHES, SIX_COMBINATIONS, SIX_HARMS, STEM_COMBINATIONS
 
 # Expanded penalty pairs — derived from THREE_PENALTIES for pair-based cross-chart detection.
 # Full three-branch sets are detected when at least two branches from the same penalty group meet.
@@ -13,6 +13,28 @@ _PENALTY_PAIRS = [
 ]
 # Branches that self-penalise when the same branch appears in both user and calendar charts
 _SELF_PENALTY_BRANCHES = frozenset({"辰", "午", "酉", "亥"})
+
+
+def detect_stem_combinations(pillars: dict) -> list:
+    """Detect Heavenly Stem Combinations (天干合) within the four pillars."""
+    stems = [
+        (pos, pillars[pos]["stem"])
+        for pos in ("year", "month", "day", "hour")
+        if pillars.get(pos, {}).get("stem")
+    ]
+    result = []
+    for i in range(len(stems)):
+        for j in range(i + 1, len(stems)):
+            pos1, s1 = stems[i]
+            pos2, s2 = stems[j]
+            for combo_set, element in STEM_COMBINATIONS:
+                if {s1, s2} == combo_set:
+                    result.append({
+                        "stems": [s1, s2],
+                        "positions": [pos1, pos2],
+                        "result_element": element,
+                    })
+    return result
 
 
 def detect_calendar_interactions(user_chart: dict, calendar_pillars: dict) -> list:

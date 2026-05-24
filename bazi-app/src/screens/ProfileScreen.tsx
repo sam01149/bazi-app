@@ -14,6 +14,11 @@ const TIMEZONES = [
   { label: 'WIT',  sub: 'Jayapura · Papua',     value: 'Asia/Jayapura' },
 ];
 
+const GENDERS = [
+  { label: 'Pria',   value: 'male'   },
+  { label: 'Wanita', value: 'female' },
+];
+
 const PILLAR_LABEL: Record<string, string> = {
   year: '年\nTAHUN', month: '月\nBULAN', day: '日\nHARI', hour: '時\nJAM',
 };
@@ -77,6 +82,7 @@ export default function ProfileScreen() {
   const [date,        setDate]        = useState('');
   const [time,        setTime]        = useState('');
   const [tz,          setTz]          = useState('Asia/Jakarta');
+  const [gender,      setGender]      = useState<string | null>(null);
   const [unknownHour, setUnknownHour] = useState(false);
   const [calculating, setCalculating] = useState(false);
 
@@ -92,7 +98,6 @@ export default function ProfileScreen() {
     try {
       const res = await axios.get(`${API_URL}/profile/${id}`);
       setChartData(res.data.chart);
-      // Filter out stale error entries that got cached in a previous session
       const raw: Record<string, string> = res.data.cached_sections ?? {};
       const filtered = Object.fromEntries(
         Object.entries(raw).filter(([, v]) => !isNarasiError(v))
@@ -124,6 +129,7 @@ export default function ProfileScreen() {
         birth_date:     date,
         birth_time:     unknownHour ? null : `${time}:00`,
         birth_timezone: tz,
+        gender:         gender ?? undefined,
       });
       await setChart(res.data.id, tz);
       setChartData(res.data);
@@ -169,7 +175,6 @@ export default function ProfileScreen() {
     };
 
     if (Platform.OS === 'web') {
-      // Alert.alert multi-button doesn't work on React Native Web
       if (window.confirm('Reset Profil?\n\nChart di server tetap ada. Perangkat ini akan lupa profil ini.')) {
         doReset();
       }
@@ -265,6 +270,26 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        <View style={styles.card}>
+          <Text style={styles.fieldLabel}>Jenis Kelamin <Text style={styles.optionalTag}>(untuk Luck Pillars)</Text></Text>
+          <View style={styles.genderRow}>
+            {GENDERS.map(g => {
+              const active = gender === g.value;
+              return (
+                <TouchableOpacity
+                  key={g.value}
+                  style={[styles.genderBtn, active && styles.genderBtnActive]}
+                  onPress={() => setGender(active ? null : g.value)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.genderLabel, active && { color: C.gold }]}>{g.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <Text style={styles.fieldHint}>Diperlukan untuk menghitung siklus 大運 (Luck Pillars)</Text>
+        </View>
+
         <TouchableOpacity
           style={[styles.calcBtn, calculating && { opacity: 0.65 }]}
           onPress={handleCalculate}
@@ -285,6 +310,12 @@ export default function ProfileScreen() {
   }
 
   // ── PROFILE ────────────────────────────────────────────────────────────────
+  const voidBranches: string[] = chartData?.void_branches ?? [];
+  const stemCombos: any[] = chartData?.stem_combinations ?? [];
+  const luckPillars: any[] = chartData?.luck_pillars ?? [];
+  const activeLp: any = chartData?.active_luck_pillar ?? null;
+  const hiddenTg: Record<string, any[]> = chartData?.hidden_ten_gods ?? {};
+
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.profileContainer} showsVerticalScrollIndicator={false}>
       {profileLoading ? (
@@ -299,17 +330,32 @@ export default function ProfileScreen() {
             const dayStem = chartData.pillars?.day?.stem ?? '';
             const stemCol = STEM_COLOR[dayStem] ?? C.gold;
             const stemEl  = STEM_ELEMENT[dayStem] ?? '';
+            const geJu    = chartData.ge_ju;
+            const yongShen = chartData.yong_shen;
             return (
               <View style={[styles.dayMasterCard, { borderColor: stemCol }]}>
                 <Text style={[styles.dayMasterChar, { color: stemCol }]}>{dayStem}</Text>
                 <View style={styles.dayMasterInfo}>
                   <Text style={styles.dayMasterEl}>{stemEl}</Text>
                   <Text style={styles.dayMasterLabel}>Day Master</Text>
-                  <View style={[styles.strengthBadge, { borderColor: stemCol }]}>
-                    <Text style={[styles.strengthText, { color: stemCol }]}>
-                      {chartData.day_master_strength ?? '-'}
-                    </Text>
+                  <View style={styles.dayMasterBadges}>
+                    <View style={[styles.strengthBadge, { borderColor: stemCol }]}>
+                      <Text style={[styles.strengthText, { color: stemCol }]}>
+                        {chartData.day_master_strength ?? '-'}
+                      </Text>
+                    </View>
+                    {geJu && (
+                      <View style={styles.geJuBadge}>
+                        <Text style={styles.geJuText}>{geJu}</Text>
+                      </View>
+                    )}
                   </View>
+                  {yongShen && (
+                    <Text style={styles.yongShenRow}>
+                      <Text style={styles.yongShenLabel}>用神 </Text>
+                      <Text style={styles.yongShenValue}>{yongShen}</Text>
+                    </Text>
+                  )}
                 </View>
               </View>
             );
@@ -319,25 +365,102 @@ export default function ProfileScreen() {
           <Text style={styles.sectionLabel}>EMPAT PILAR</Text>
           <View style={styles.pillarsContainer}>
             {(['year', 'month', 'day', 'hour'] as const).map(p => {
-              const pillar = chartData.pillars?.[p];
-              const stem   = pillar?.stem ?? '-';
-              const branch = pillar?.branch ?? '-';
-              const isDay  = p === 'day';
+              const pillar  = chartData.pillars?.[p];
+              const stem    = pillar?.stem ?? '-';
+              const branch  = pillar?.branch ?? '-';
+              const isDay   = p === 'day';
               const stemCol = STEM_COLOR[stem] ?? C.gold;
-              const tenGod = isDay ? '日主' : (chartData.ten_gods?.[`${p}_stem`] ?? '-');
-              const animal = BRANCH_ANIMAL[branch] ?? '';
+              const tenGod  = isDay ? '日主' : (chartData.ten_gods?.[`${p}_stem`] ?? '-');
+              const animal  = BRANCH_ANIMAL[branch] ?? '';
+              const isVoid  = voidBranches.includes(branch) && branch !== '-';
+              const dominantHidden = hiddenTg[p]?.[0];
               return (
                 <View key={p} style={[styles.pillarCol, isDay && { backgroundColor: C.surfaceHigh }]}>
                   <Text style={styles.pillarColLabel}>{PILLAR_LABEL[p]}</Text>
                   <Text style={[styles.pillarColStem, { color: isDay ? C.goldSoft : stemCol }]}>{stem}</Text>
                   <View style={[styles.pillarColDivider, { borderColor: isDay ? C.gold : C.border }]} />
-                  <Text style={[styles.pillarColBranch, isDay && { color: C.goldSoft }]}>{branch}</Text>
+                  <View style={{ position: 'relative', alignItems: 'center' }}>
+                    <Text style={[styles.pillarColBranch, isDay && { color: C.goldSoft }, isVoid && styles.voidBranchText]}>
+                      {branch}
+                    </Text>
+                    {isVoid && (
+                      <View style={styles.voidBadge}>
+                        <Text style={styles.voidBadgeText}>空</Text>
+                      </View>
+                    )}
+                  </View>
                   <Text style={styles.pillarColAnimal}>{animal}</Text>
                   <Text style={[styles.pillarColGod, { color: isDay ? C.gold : C.textMuted }]}>{tenGod}</Text>
+                  {dominantHidden && (
+                    <Text style={styles.pillarColHiddenGod} numberOfLines={1}>
+                      藏{dominantHidden.ten_god}
+                    </Text>
+                  )}
                 </View>
               );
             })}
           </View>
+
+          {/* Stem Combinations */}
+          {stemCombos.length > 0 && (
+            <>
+              <Text style={styles.sectionLabel}>天干合 STEM COMBINATIONS</Text>
+              <View style={styles.comboCard}>
+                {stemCombos.map((c, idx) => (
+                  <View key={idx} style={styles.comboRow}>
+                    <Text style={styles.comboStems}>
+                      {c.stems.map((s: string) => (
+                        <Text key={s} style={{ color: STEM_COLOR[s] ?? C.goldSoft }}>{s}</Text>
+                      ))}
+                      <Text style={{ color: C.textMuted }}> 合 → </Text>
+                      <Text style={{ color: C.gold }}>{c.result_element}</Text>
+                    </Text>
+                    <Text style={styles.comboPositions}>{c.positions.join(' + ')}</Text>
+                  </View>
+                ))}
+              </View>
+            </>
+          )}
+
+          {/* Luck Pillars */}
+          {luckPillars.length > 0 && (
+            <>
+              <Text style={styles.sectionLabel}>大運 LUCK PILLARS</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.lpScroll} contentContainerStyle={styles.lpScrollContent}>
+                {luckPillars.map((lp: any, idx: number) => {
+                  const isActive = activeLp?.order_index === lp.order_index;
+                  const stemCol  = STEM_COLOR[lp.stem] ?? C.textMuted;
+                  return (
+                    <View key={idx} style={[styles.lpCard, isActive && styles.lpCardActive]}>
+                      {isActive && <Text style={styles.lpActiveTag}>AKTIF</Text>}
+                      <Text style={[styles.lpStem, { color: isActive ? stemCol : C.textMuted }]}>{lp.stem}</Text>
+                      <View style={[styles.lpDivider, { borderColor: isActive ? C.gold : C.border }]} />
+                      <Text style={[styles.lpBranch, isActive && { color: C.goldSoft }]}>{lp.branch}</Text>
+                      <Text style={[styles.lpAge, isActive && { color: C.gold }]}>{lp.age_start}岁</Text>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            </>
+          )}
+
+          {/* Void Branches info */}
+          {voidBranches.length > 0 && (
+            <>
+              <Text style={styles.sectionLabel}>空亡 VOID BRANCHES</Text>
+              <View style={styles.voidCard}>
+                <View style={styles.voidBranchRow}>
+                  {voidBranches.map(b => (
+                    <View key={b} style={styles.voidBranchChip}>
+                      <Text style={styles.voidBranchChipText}>{b}</Text>
+                      <Text style={styles.voidBranchChipSub}>{BRANCH_ANIMAL[b] ?? ''}</Text>
+                    </View>
+                  ))}
+                </View>
+                <Text style={styles.voidNote}>Ten God di branch ini cenderung kehilangan efektivitas</Text>
+              </View>
+            </>
+          )}
 
           {/* Narasi sections */}
           <Text style={styles.sectionLabel}>INTERPRETASI</Text>
@@ -401,6 +524,7 @@ export default function ProfileScreen() {
                   })
                 : '-'}
               {' · '}{chartData.birth_timezone}
+              {chartData.gender ? ` · ${chartData.gender === 'male' ? 'Pria' : 'Wanita'}` : ''}
             </Text>
           </View>
 
@@ -438,7 +562,8 @@ const styles = StyleSheet.create({
     borderColor: C.border,
   },
   fieldLabel: { fontSize: 13, fontWeight: '700', color: C.text, marginBottom: 10, letterSpacing: 0.3 },
-  fieldHint:  { fontSize: 12, color: C.textMuted, marginTop: -6 },
+  fieldHint:  { fontSize: 12, color: C.textMuted, marginTop: 6 },
+  optionalTag:{ fontSize: 11, fontWeight: '400', color: C.textFaint },
   input: {
     backgroundColor: C.bg,
     borderWidth: 1.5,
@@ -458,6 +583,11 @@ const styles = StyleSheet.create({
   tzLabel:     { fontSize: 15, fontWeight: '700', color: C.textMuted },
   tzSub:       { fontSize: 12, color: C.textFaint, marginTop: 2 },
 
+  genderRow:       { flexDirection: 'row', gap: 10 },
+  genderBtn:       { flex: 1, backgroundColor: C.bg, borderWidth: 1.5, borderColor: C.border, borderRadius: 10, padding: 13, alignItems: 'center' },
+  genderBtnActive: { borderColor: C.gold, backgroundColor: C.surfaceHigh },
+  genderLabel:     { fontSize: 15, fontWeight: '700', color: C.textMuted },
+
   calcBtn: {
     backgroundColor: C.gold,
     paddingVertical: 16,
@@ -473,7 +603,7 @@ const styles = StyleSheet.create({
 
   dayMasterCard: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     backgroundColor: C.surface,
     borderWidth: 1.5,
     borderRadius: 16,
@@ -485,15 +615,25 @@ const styles = StyleSheet.create({
   dayMasterInfo:  { flex: 1, gap: 4 },
   dayMasterEl:    { fontSize: 15, fontWeight: '700', color: C.text },
   dayMasterLabel: { fontSize: 12, color: C.textMuted, fontWeight: '600', letterSpacing: 0.5 },
+  dayMasterBadges:{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
   strengthBadge:  {
-    alignSelf: 'flex-start',
     borderWidth: 1,
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 3,
-    marginTop: 4,
   },
   strengthText: { fontSize: 13, fontWeight: '700' },
+  geJuBadge: {
+    borderWidth: 1,
+    borderColor: C.textFaint,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  geJuText: { fontSize: 13, fontWeight: '700', color: C.textMuted },
+  yongShenRow:  { marginTop: 4 },
+  yongShenLabel:{ fontSize: 11, color: C.textFaint, fontWeight: '600' },
+  yongShenValue:{ fontSize: 13, color: C.goldSoft, fontWeight: '700' },
 
   sectionLabel: {
     fontSize: 11,
@@ -521,12 +661,69 @@ const styles = StyleSheet.create({
     borderRightWidth: 1,
     borderRightColor: C.border,
   },
-  pillarColLabel:  { fontSize: 8, color: C.textFaint, textAlign: 'center', lineHeight: 13, marginBottom: 8 },
-  pillarColStem:   { fontSize: 28, fontWeight: '900' },
-  pillarColDivider:{ width: 20, height: 1, borderTopWidth: 1, marginVertical: 6 },
-  pillarColBranch: { fontSize: 28, fontWeight: '900', color: C.text },
-  pillarColAnimal: { fontSize: 9, color: C.textFaint, marginTop: 4 },
-  pillarColGod:    { fontSize: 10, fontWeight: '700', marginTop: 4 },
+  pillarColLabel:     { fontSize: 8, color: C.textFaint, textAlign: 'center', lineHeight: 13, marginBottom: 8 },
+  pillarColStem:      { fontSize: 28, fontWeight: '900' },
+  pillarColDivider:   { width: 20, height: 1, borderTopWidth: 1, marginVertical: 6 },
+  pillarColBranch:    { fontSize: 28, fontWeight: '900', color: C.text },
+  voidBranchText:     { opacity: 0.45 },
+  voidBadge:          { position: 'absolute', top: -4, right: -4, backgroundColor: C.textFaint, borderRadius: 4, paddingHorizontal: 3, paddingVertical: 1 },
+  voidBadgeText:      { fontSize: 8, color: C.bg, fontWeight: '900' },
+  pillarColAnimal:    { fontSize: 9, color: C.textFaint, marginTop: 4 },
+  pillarColGod:       { fontSize: 10, fontWeight: '700', marginTop: 4 },
+  pillarColHiddenGod: { fontSize: 9, color: C.textFaint, marginTop: 2, fontStyle: 'italic' },
+
+  // Stem Combinations
+  comboCard: {
+    backgroundColor: C.surface,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: C.border,
+    gap: 8,
+  },
+  comboRow:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  comboStems:     { fontSize: 15, fontWeight: '700' },
+  comboPositions: { fontSize: 11, color: C.textFaint },
+
+  // Luck Pillars
+  lpScroll:        { marginBottom: 20 },
+  lpScrollContent: { paddingHorizontal: 2, gap: 10 },
+  lpCard: {
+    width: 64,
+    alignItems: 'center',
+    backgroundColor: C.surface,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    borderWidth: 1,
+    borderColor: C.border,
+    gap: 2,
+  },
+  lpCardActive: {
+    borderColor: C.gold,
+    backgroundColor: C.surfaceHigh,
+  },
+  lpActiveTag: { fontSize: 7, fontWeight: '900', color: C.gold, letterSpacing: 0.5, marginBottom: 2 },
+  lpStem:      { fontSize: 22, fontWeight: '900', color: C.textMuted },
+  lpDivider:   { width: 16, height: 1, borderTopWidth: 1, marginVertical: 4 },
+  lpBranch:    { fontSize: 22, fontWeight: '900', color: C.text },
+  lpAge:       { fontSize: 10, color: C.textFaint, marginTop: 4, fontWeight: '700' },
+
+  // Void Branches
+  voidCard: {
+    backgroundColor: C.surface,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  voidBranchRow:     { flexDirection: 'row', gap: 10, marginBottom: 8 },
+  voidBranchChip:    { alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8, backgroundColor: C.bg, borderRadius: 10, borderWidth: 1, borderColor: C.textFaint },
+  voidBranchChipText:{ fontSize: 22, fontWeight: '900', color: C.textFaint },
+  voidBranchChipSub: { fontSize: 9, color: C.textFaint, marginTop: 2 },
+  voidNote:          { fontSize: 12, color: C.textFaint, lineHeight: 18 },
 
   narasiButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
   narasiBtn: {

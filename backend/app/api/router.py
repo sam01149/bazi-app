@@ -11,29 +11,20 @@ from app.models.schemas import (
     ChartCalculateRequest, ChartResponse, CalendarResponse,
     NarasiGenerateRequest, PillarsSchema, PillarSchema,
     WishCreateRequest, WishResponse, WishAnalyzeRequest,
-    ProfileResponse, CalendarNarasiRequest,
+    ProfileResponse, CalendarNarasiRequest, LuckPillarSchema,
 )
-from app.models.domain import BaZiChart, TenGod, Wish, CachedNarasi
-from app.engine.calculator import get_bazi_chart, get_solar_term_date
-from app.engine.interactions import detect_calendar_interactions
+from app.models.domain import BaZiChart, TenGod, Wish, CachedNarasi, LuckPillar
+from app.engine.calculator import (
+    get_bazi_chart, get_solar_term_date,
+    get_ge_ju, get_yong_shen,
+    get_hidden_stem_ten_gods, get_kong_wang,
+    get_luck_pillars, get_active_luck_pillar,
+)
+from app.engine.interactions import detect_calendar_interactions, detect_stem_combinations
 from app.engine.tables import HEAVENLY_STEMS_ELEMENT, HEAVENLY_STEMS_POLARITY
 from app.services.cerebras import generate_narasi, generate_wish_analysis, generate_calendar_narasi, is_error_narasi
 
 router = APIRouter()
-
-
-def _build_chart_dict(db_chart: BaZiChart) -> dict:
-    return {
-        "day_master": db_chart.day_stem,
-        "strength": db_chart.day_master_strength,
-        "pillars": {
-            "year":  {"stem": db_chart.year_stem,  "branch": db_chart.year_branch},
-            "month": {"stem": db_chart.month_stem, "branch": db_chart.month_branch},
-            "day":   {"stem": db_chart.day_stem,   "branch": db_chart.day_branch},
-            "hour":  {"stem": db_chart.hour_stem,  "branch": db_chart.hour_branch},
-        },
-        "birth_timezone": db_chart.birth_timezone,
-    }
 
 
 def _pillars_schema(db_chart: BaZiChart) -> PillarsSchema:
@@ -45,6 +36,93 @@ def _pillars_schema(db_chart: BaZiChart) -> PillarsSchema:
     )
 
 
+def _pillars_dict(db_chart: BaZiChart) -> dict:
+    return {
+        "year":  {"stem": db_chart.year_stem,  "branch": db_chart.year_branch},
+        "month": {"stem": db_chart.month_stem, "branch": db_chart.month_branch},
+        "day":   {"stem": db_chart.day_stem,   "branch": db_chart.day_branch},
+        "hour":  {"stem": db_chart.hour_stem or "", "branch": db_chart.hour_branch or ""},
+    }
+
+
+def _build_chart_response(
+    db_chart: BaZiChart,
+    ten_gods_map: dict,
+    luck_pillars_list: list = None,
+) -> ChartResponse:
+    pillars = _pillars_dict(db_chart)
+    void_branches = get_kong_wang(db_chart.day_stem, db_chart.day_branch)
+    stem_combinations = detect_stem_combinations(pillars)
+    hidden_ten_gods = get_hidden_stem_ten_gods(pillars, db_chart.day_stem)
+
+    lp_schemas: list[LuckPillarSchema] = []
+    if luck_pillars_list:
+        lp_schemas = [
+            LuckPillarSchema(
+                stem=lp.stem,
+                branch=lp.branch,
+                age_start=float(lp.age_start),
+                order_index=int(lp.order_index),
+            )
+            for lp in sorted(luck_pillars_list, key=lambda x: x.order_index)
+        ]
+
+    active_lp: Optional[LuckPillarSchema] = None
+    if lp_schemas:
+        tz = pytz.timezone(db_chart.birth_timezone)
+        birth_aware = tz.localize(db_chart.birth_datetime)
+        active_dict = get_active_luck_pillar(
+            [{"age_start": lp.age_start, "stem": lp.stem, "branch": lp.branch, "order_index": lp.order_index}
+             for lp in lp_schemas],
+            birth_aware,
+        )
+        if active_dict:
+            active_lp = LuckPillarSchema(**active_dict)
+
+    return ChartResponse(
+        id=db_chart.id,
+        user_id=db_chart.user_id,
+        birth_datetime=db_chart.birth_datetime,
+        birth_timezone=db_chart.birth_timezone,
+        pillars=_pillars_schema(db_chart),
+        ten_gods=ten_gods_map,
+        day_master_strength=db_chart.day_master_strength,
+        gender=db_chart.gender,
+        ge_ju=db_chart.ge_ju,
+        yong_shen=db_chart.yong_shen,
+        void_branches=void_branches or None,
+        stem_combinations=stem_combinations or None,
+        hidden_ten_gods=hidden_ten_gods or None,
+        luck_pillars=lp_schemas or None,
+        active_luck_pillar=active_lp,
+    )
+
+
+def _build_chart_dict(db_chart: BaZiChart, ten_gods_map: dict = None, luck_pillars_list: list = None) -> dict:
+    """Build chart dict for AI payload."""
+    pillars = _pillars_dict(db_chart)
+    day_stem = db_chart.day_stem
+    d = {
+        "day_master": f"{day_stem} {HEAVENLY_STEMS_ELEMENT.get(day_stem, '')} {HEAVENLY_STEMS_POLARITY.get(day_stem, '')}".strip(),
+        "strength": db_chart.day_master_strength,
+        "ge_ju": db_chart.ge_ju,
+        "yong_shen": db_chart.yong_shen,
+        "pillars": pillars,
+        "void_branches": get_kong_wang(day_stem, db_chart.day_branch),
+        "stem_combinations": detect_stem_combinations(pillars),
+        "hidden_ten_gods": get_hidden_stem_ten_gods(pillars, day_stem),
+    }
+    if ten_gods_map:
+        d["ten_gods"] = ten_gods_map
+    if luck_pillars_list is not None:
+        tz = pytz.timezone(db_chart.birth_timezone)
+        birth_aware = tz.localize(db_chart.birth_datetime)
+        lp_raw = [{"age_start": lp.age_start, "stem": lp.stem, "branch": lp.branch, "order_index": lp.order_index}
+                  for lp in sorted(luck_pillars_list, key=lambda x: x.order_index)]
+        d["active_luck_pillar"] = get_active_luck_pillar(lp_raw, birth_aware)
+    return d
+
+
 # ─── Charts ───────────────────────────────────────────────────────────────────
 
 @router.post("/charts/calculate", response_model=ChartResponse)
@@ -54,6 +132,9 @@ async def calculate_chart(req: ChartCalculateRequest, db: AsyncSession = Depends
     except pytz.UnknownTimeZoneError:
         raise HTTPException(status_code=400, detail="Invalid timezone")
 
+    if req.gender and req.gender.lower() not in ("male", "female"):
+        raise HTTPException(status_code=400, detail="gender must be 'male' or 'female'")
+
     hour = req.birth_time.hour if req.birth_time else 12
     minute = req.birth_time.minute if req.birth_time else 0
 
@@ -61,27 +142,37 @@ async def calculate_chart(req: ChartCalculateRequest, db: AsyncSession = Depends
     dt_aware = tz.localize(dt_local)
 
     chart_data = get_bazi_chart(dt_aware)
+    pillars = chart_data["pillars"]
+    day_stem = chart_data["day_master"]
+    strength = chart_data["day_master_strength"]
+
+    ge_ju = get_ge_ju(pillars["month"]["branch"], day_stem)
+    yong_shen = get_yong_shen(ge_ju, strength)
 
     db_chart = BaZiChart(
         birth_datetime=dt_aware.replace(tzinfo=None),
         birth_timezone=req.birth_timezone,
-        year_stem=chart_data["pillars"]["year"]["stem"],
-        year_branch=chart_data["pillars"]["year"]["branch"],
-        month_stem=chart_data["pillars"]["month"]["stem"],
-        month_branch=chart_data["pillars"]["month"]["branch"],
-        day_stem=chart_data["pillars"]["day"]["stem"],
-        day_branch=chart_data["pillars"]["day"]["branch"],
-        hour_stem=chart_data["pillars"]["hour"]["stem"],
-        hour_branch=chart_data["pillars"]["hour"]["branch"],
-        day_master_strength=chart_data["day_master_strength"],
+        year_stem=pillars["year"]["stem"],
+        year_branch=pillars["year"]["branch"],
+        month_stem=pillars["month"]["stem"],
+        month_branch=pillars["month"]["branch"],
+        day_stem=pillars["day"]["stem"],
+        day_branch=pillars["day"]["branch"],
+        hour_stem=pillars["hour"]["stem"],
+        hour_branch=pillars["hour"]["branch"],
+        day_master_strength=strength,
+        gender=req.gender,
+        ge_ju=ge_ju,
+        yong_shen=yong_shen,
     )
     db.add(db_chart)
     await db.flush()
 
+    # Surface ten gods (stem-level)
     position_stem_map = {
-        "year_stem":  chart_data["pillars"]["year"]["stem"],
-        "month_stem": chart_data["pillars"]["month"]["stem"],
-        "hour_stem":  chart_data["pillars"]["hour"]["stem"],
+        "year_stem":  pillars["year"]["stem"],
+        "month_stem": pillars["month"]["stem"],
+        "hour_stem":  pillars["hour"]["stem"],
     }
     for pos, god in chart_data["ten_gods"].items():
         actual_stem = position_stem_map.get(pos, "")
@@ -94,40 +185,66 @@ async def calculate_chart(req: ChartCalculateRequest, db: AsyncSession = Depends
             polarity=HEAVENLY_STEMS_POLARITY.get(actual_stem, "Unknown"),
         ))
 
+    # Hidden ten gods (branch-level)
+    hidden_tgs = get_hidden_stem_ten_gods(pillars, day_stem)
+    for position, hs_list in hidden_tgs.items():
+        branch = pillars[position]["branch"]
+        for hs_data in hs_list:
+            db.add(TenGod(
+                chart_id=db_chart.id,
+                position=f"hidden_{position}",
+                stem_or_branch="hidden",
+                ten_god=hs_data["ten_god"],
+                element=hs_data["element"],
+                polarity=hs_data["polarity"],
+                source_branch=branch,
+            ))
+
+    # Luck pillars (only if gender provided)
+    saved_lp: list[LuckPillar] = []
+    if req.gender:
+        lp_list = get_luck_pillars(
+            dt_aware,
+            pillars["year"]["stem"],
+            pillars["month"]["stem"],
+            pillars["month"]["branch"],
+            req.gender,
+        )
+        for lp in lp_list:
+            obj = LuckPillar(
+                chart_id=db_chart.id,
+                order_index=lp["order_index"],
+                stem=lp["stem"],
+                branch=lp["branch"],
+                age_start=lp["age_start"],
+            )
+            db.add(obj)
+            saved_lp.append(obj)
+
     await db.commit()
     await db.refresh(db_chart)
 
-    return ChartResponse(
-        id=db_chart.id,
-        user_id=db_chart.user_id,
-        birth_datetime=db_chart.birth_datetime,
-        birth_timezone=db_chart.birth_timezone,
-        pillars=_pillars_schema(db_chart),
-        ten_gods=chart_data["ten_gods"],
-        day_master_strength=db_chart.day_master_strength,
-    )
+    return _build_chart_response(db_chart, chart_data["ten_gods"], saved_lp)
 
 
 @router.get("/charts/{chart_id}", response_model=ChartResponse)
 async def get_chart(chart_id: str, db: AsyncSession = Depends(get_db)):
-    stmt = select(BaZiChart).where(BaZiChart.id == chart_id).options(selectinload(BaZiChart.ten_gods))
+    stmt = (
+        select(BaZiChart)
+        .where(BaZiChart.id == chart_id)
+        .options(
+            selectinload(BaZiChart.ten_gods),
+            selectinload(BaZiChart.luck_pillars),
+        )
+    )
     result = await db.execute(stmt)
     db_chart = result.scalars().first()
 
     if not db_chart:
         raise HTTPException(status_code=404, detail="Chart not found")
 
-    ten_gods = {tg.position: tg.ten_god for tg in db_chart.ten_gods}
-
-    return ChartResponse(
-        id=db_chart.id,
-        user_id=db_chart.user_id,
-        birth_datetime=db_chart.birth_datetime,
-        birth_timezone=db_chart.birth_timezone,
-        pillars=_pillars_schema(db_chart),
-        ten_gods=ten_gods,
-        day_master_strength=db_chart.day_master_strength,
-    )
+    ten_gods = {tg.position: tg.ten_god for tg in db_chart.ten_gods if tg.stem_or_branch == "stem"}
+    return _build_chart_response(db_chart, ten_gods, db_chart.luck_pillars)
 
 
 # ─── Calendar ─────────────────────────────────────────────────────────────────
@@ -212,7 +329,6 @@ def _interaction_to_dict(interaction) -> dict:
             "description": interaction.get("description"),
             "element": interaction.get("element"),
         }
-
     return {
         "type": getattr(interaction, "type", None),
         "user_branch": getattr(interaction, "user_branch", None),
@@ -252,7 +368,7 @@ async def get_calendar_narasi(req: CalendarNarasiRequest, db: AsyncSession = Dep
         }
     }
     interactions_raw = detect_calendar_interactions(user_dict, cal)
-    interactions_list = [_interaction_to_dict(interaction) for interaction in interactions_raw]
+    interactions_list = [_interaction_to_dict(i) for i in interactions_raw]
 
     calendar_pillars = {
         "year":  {"stem": cal["pillars"]["year"]["stem"],  "branch": cal["pillars"]["year"]["branch"]},
@@ -264,12 +380,9 @@ async def get_calendar_narasi(req: CalendarNarasiRequest, db: AsyncSession = Dep
     user_chart_for_ai = {
         "day_master": f"{day_stem} {HEAVENLY_STEMS_ELEMENT.get(day_stem, '')} {HEAVENLY_STEMS_POLARITY.get(day_stem, '')}".strip(),
         "strength": db_chart.day_master_strength,
-        "pillars": {
-            "year":  {"stem": db_chart.year_stem,  "branch": db_chart.year_branch},
-            "month": {"stem": db_chart.month_stem, "branch": db_chart.month_branch},
-            "day":   {"stem": db_chart.day_stem,   "branch": db_chart.day_branch},
-            "hour":  {"stem": db_chart.hour_stem,  "branch": db_chart.hour_branch},
-        },
+        "ge_ju": db_chart.ge_ju,
+        "yong_shen": db_chart.yong_shen,
+        "pillars": _pillars_dict(db_chart),
     }
 
     narasi = await generate_calendar_narasi(
@@ -287,14 +400,21 @@ async def get_calendar_narasi(req: CalendarNarasiRequest, db: AsyncSession = Dep
 
 @router.post("/narasi/generate")
 async def generate_narasi_endpoint(req: NarasiGenerateRequest, db: AsyncSession = Depends(get_db)):
-    stmt = select(BaZiChart).where(BaZiChart.id == req.chart_id).options(selectinload(BaZiChart.ten_gods))
+    stmt = (
+        select(BaZiChart)
+        .where(BaZiChart.id == req.chart_id)
+        .options(
+            selectinload(BaZiChart.ten_gods),
+            selectinload(BaZiChart.luck_pillars),
+        )
+    )
     result = await db.execute(stmt)
     db_chart = result.scalars().first()
 
     if not db_chart:
         raise HTTPException(status_code=404, detail="Chart not found")
 
-    # Return cached version if available (skip if previously cached an error)
+    # Return cached version if available
     cached_stmt = select(CachedNarasi).where(
         CachedNarasi.chart_id == req.chart_id,
         CachedNarasi.section == req.section,
@@ -304,24 +424,15 @@ async def generate_narasi_endpoint(req: NarasiGenerateRequest, db: AsyncSession 
     if cached and not is_error_narasi(cached.narasi_text):
         return {"narasi": cached.narasi_text, "cached": True}
 
-    ten_gods_map = {tg.position: tg.ten_god for tg in db_chart.ten_gods}
-    structured_data = _build_chart_dict(db_chart)
-    structured_data["ten_gods"] = ten_gods_map
-    day_stem = db_chart.day_stem
-    structured_data["day_master"] = (
-        f"{day_stem} "
-        f"{HEAVENLY_STEMS_ELEMENT.get(day_stem, '')} "
-        f"{HEAVENLY_STEMS_POLARITY.get(day_stem, '')}"
-    ).strip()
+    ten_gods_map = {tg.position: tg.ten_god for tg in db_chart.ten_gods if tg.stem_or_branch == "stem"}
+    structured_data = _build_chart_dict(db_chart, ten_gods_map, db_chart.luck_pillars)
 
     narration = await generate_narasi(structured_data, req.section)
 
     if is_error_narasi(narration):
-        # Delete bad cache entry if it exists so next retry can try again
         if cached:
             await db.delete(cached)
             await db.commit()
-        # Return user-friendly error (strip internal prefix)
         msg = narration.replace("ERROR: ", "", 1)
         raise HTTPException(status_code=503, detail=msg)
 
@@ -348,6 +459,7 @@ async def get_profile(chart_id: str, db: AsyncSession = Depends(get_db)):
         .options(
             selectinload(BaZiChart.ten_gods),
             selectinload(BaZiChart.cached_narasi),
+            selectinload(BaZiChart.luck_pillars),
         )
     )
     result = await db.execute(stmt)
@@ -356,19 +468,10 @@ async def get_profile(chart_id: str, db: AsyncSession = Depends(get_db)):
     if not db_chart:
         raise HTTPException(status_code=404, detail="Chart not found")
 
-    ten_gods = {tg.position: tg.ten_god for tg in db_chart.ten_gods}
+    ten_gods = {tg.position: tg.ten_god for tg in db_chart.ten_gods if tg.stem_or_branch == "stem"}
     cached_sections = {cn.section: cn.narasi_text for cn in db_chart.cached_narasi}
 
-    chart_resp = ChartResponse(
-        id=db_chart.id,
-        user_id=db_chart.user_id,
-        birth_datetime=db_chart.birth_datetime,
-        birth_timezone=db_chart.birth_timezone,
-        pillars=_pillars_schema(db_chart),
-        ten_gods=ten_gods,
-        day_master_strength=db_chart.day_master_strength,
-    )
-
+    chart_resp = _build_chart_response(db_chart, ten_gods, db_chart.luck_pillars)
     return {"chart": chart_resp, "cached_sections": cached_sections}
 
 
@@ -425,19 +528,8 @@ async def analyze_wish(wish_id: str, req: WishAnalyzeRequest, db: AsyncSession =
     if not db_chart:
         raise HTTPException(status_code=404, detail="Chart not found")
 
-    ten_gods_map = {tg.position: tg.ten_god for tg in db_chart.ten_gods}
-    day_stem = db_chart.day_stem
-    chart_dict = {
-        "day_master": f"{day_stem} {HEAVENLY_STEMS_ELEMENT.get(day_stem, '')} {HEAVENLY_STEMS_POLARITY.get(day_stem, '')}".strip(),
-        "strength": db_chart.day_master_strength,
-        "pillars": {
-            "year":  {"stem": db_chart.year_stem,  "branch": db_chart.year_branch},
-            "month": {"stem": db_chart.month_stem, "branch": db_chart.month_branch},
-            "day":   {"stem": db_chart.day_stem,   "branch": db_chart.day_branch},
-            "hour":  {"stem": db_chart.hour_stem,  "branch": db_chart.hour_branch},
-        },
-        "ten_gods": ten_gods_map,
-    }
+    ten_gods_map = {tg.position: tg.ten_god for tg in db_chart.ten_gods if tg.stem_or_branch == "stem"}
+    chart_dict = _build_chart_dict(db_chart, ten_gods_map)
 
     analysis = await generate_wish_analysis(chart_dict, wish.content)
     wish.analysis = analysis

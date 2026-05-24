@@ -248,12 +248,130 @@ git push hf master:main
 ### Belum Ada / Known Issues ⚠️
 - **Tidak ada unit tests** — engine calculation belum ditest
 - **Alembic migrations belum setup** — pakai `create_all()` (tables baru terbuat otomatis saat restart)
-- **Hidden Stems Ten Gods** — belum diimplementasi
 - **Tidak ada multi-user** — satu device = satu chart (tidak ada login/akun)
 
 ---
 
-## Cara Menjalankan
+## Roadmap Pengembangan
+
+Fitur-fitur BaZi klasik yang belum diimplementasi, diurutkan berdasarkan dampak analitis terhadap kualitas AI output. Semua berasal dari Zi Ping Zhen Quan dan San Ming Tong Hui — bukan sistem proprietary.
+
+---
+
+### Fase 1 — Fondasi Analitis (prioritas tertinggi)
+
+#### 1A. Ge Ju + Yong Shen / 格局用神
+**Dampak:** Paling besar. Ini inti dari Zi Ping Zhen Quan. Tanpa ini AI hanya membaca data mentah.
+
+**Apa itu:**
+- **Ge Ju (格局)** = struktur dominan chart, ditentukan dari hidden stem terkuat di Month Branch dibandingkan dengan DM strength
+- **Yong Shen (用神)** = Ten God/elemen yang paling dibutuhkan chart untuk seimbang. DM kuat → butuh Output/Wealth/Officer. DM lemah → butuh Resource/Friends
+
+**Yang perlu dibangun:**
+- Fungsi `get_ge_ju(pillars, day_master, strength)` di `calculator.py` — baca hidden stem dominan Month Branch, tentukan struktur
+- Fungsi `get_yong_shen(ge_ju, strength)` — tentukan Useful God berdasarkan struktur dan kekuatan DM
+- Simpan `ge_ju` dan `yong_shen` ke kolom baru di tabel `BaZiChart`
+- Kirim ke AI sebagai field tambahan di semua payload (profil, kalender, keinginan)
+- Update semua prompt untuk memanfaatkan Yong Shen: "apakah interaksi ini membawa Yong Shen atau melemahkannya?"
+
+**Perubahan skema DB:** Tambah kolom `ge_ju VARCHAR` dan `yong_shen VARCHAR` di `BaZiChart`
+
+---
+
+#### 1B. Luck Pillars / 大運
+**Dampak:** Menambah dimensi waktu — membaca chart statis menjadi chart yang bergerak per dekade.
+
+**Apa itu:**
+- Siklus 10 tahunan yang dihitung dari gender + jarak hari ke solar term terdekat
+- Arah maju/mundur ditentukan oleh gender × polaritas tahun lahir:
+  - Pria + Tahun Yang → maju ke solar term berikutnya
+  - Pria + Tahun Yin → mundur ke solar term sebelumnya
+  - Wanita + Tahun Yang → mundur
+  - Wanita + Tahun Yin → maju
+- Jumlah hari ÷ 3 = usia mulai Luck Pillar pertama
+
+**Yang perlu dibangun:**
+- Tambah field `gender` ke `ChartCalculateRequest` schema dan `BaZiChart` domain model
+- Fungsi `get_luck_pillars(birth_dt, year_stem, gender)` di `calculator.py` — hitung 8–10 dekade ke depan, return list `{stem, branch, age_start}`
+- Fungsi `get_active_luck_pillar(luck_pillars, birth_dt)` — tentukan dekade aktif berdasarkan tanggal hari ini
+- Simpan luck pillars ke tabel baru `LuckPillar` (relasi ke `BaZiChart`)
+- Kirim `active_luck_pillar` ke AI (sudah ada slot-nya di `PROFILE_SYSTEM_PROMPT` section 6)
+- Update frontend: tambah input gender di onboarding form
+
+**Perubahan skema DB:** Tambah tabel `LuckPillar(id, chart_id, age_start, stem, branch, order_index)` + kolom `gender` di `BaZiChart`
+
+---
+
+### Fase 2 — Kedalaman Struktural
+
+#### 2A. Hidden Stems Ten Gods / 藏干十神
+**Dampak:** Mengungkap "akar" dari setiap Ten God — apakah suatu Ten God punya kekuatan nyata atau hanya permukaan.
+
+**Apa itu:**
+- Setiap Earthly Branch menyimpan 1–3 hidden stems (data sudah ada di `tables.py` sebagai `HIDDEN_STEMS`)
+- Masing-masing hidden stem punya Ten God relationship dengan Day Master
+- Branch dianggap lebih berpengaruh dari stem dalam analisis klasik
+
+**Yang perlu dibangun:**
+- Fungsi `get_hidden_stem_ten_gods(pillars, day_master)` di `calculator.py` — iterate semua branch, hitung Ten God tiap hidden stem
+- Simpan ke tabel `TenGod` yang sudah ada dengan `stem_or_branch = "hidden"` dan field `source_branch`
+- Kirim ke AI sebagai `hidden_ten_gods` di payload profil
+
+**Perubahan skema DB:** Minimal — pakai tabel `TenGod` yang sudah ada, tambah kolom `source_branch VARCHAR` nullable
+
+---
+
+#### 2B. Heavenly Stem Combinations / 天干合
+**Dampak:** Dua stem yang combine bisa saling menetralisir atau bertransformasi — mengubah komposisi elemen chart.
+
+**Apa itu:**
+- 5 pasangan kombinasi: 甲己, 乙庚, 丙辛, 丁壬, 戊癸
+- Jika dua stem yang berpasangan muncul dalam chart (atau dalam natal + luck pillar/annual), keduanya "terikat" dan bisa bertransformasi ke elemen baru
+- Syarat transformasi: elemen hasil transform harus kuat di chart (ada dukungan dari branch)
+
+**Yang perlu dibangun:**
+- Tabel `STEM_COMBINATIONS` di `tables.py`
+- Fungsi `detect_stem_combinations(pillars)` di `interactions.py` — return list pasangan yang combine beserta elemen transformasinya (jika syarat terpenuhi)
+- Kirim ke AI sebagai field `stem_combinations` di payload profil
+
+**Perubahan skema DB:** Tidak ada
+
+---
+
+#### 2C. Kong Wang / 空亡 (Void)
+**Dampak:** Beberapa Ten God menjadi tidak efektif meskipun hadir di chart.
+
+**Apa itu:**
+- Setiap pasangan Jiazi (60 cycle) punya 2 branch yang "void" — branch yang jatuh di luar siklus 12 dari stem-nya
+- Branch yang void = Ten God di sana kehilangan efektivitas
+- Dihitung dari Day Pillar Jiazi index
+
+**Yang perlu dibangun:**
+- Tabel `KONG_WANG` — mapping 60 Jiazi ke 2 branch yang void
+- Fungsi `get_kong_wang(day_stem, day_branch)` di `calculator.py`
+- Kirim ke AI sebagai `void_branches` di payload
+
+**Perubahan skema DB:** Tidak ada (dihitung on-the-fly)
+
+---
+
+### Fase 3 — Pelengkap (opsional)
+
+#### 3A. Special Stars / 神煞
+Noble People (贵人), Peach Blossom (桃花), Sky Horse (驿马), Intelligence (文昌), Solitary (孤辰). Dihitung dari tabel berdasarkan Year Stem atau Day Master. Nilai analitis lebih rendah, tapi memberikan konteks karakter.
+
+#### 3B. 12 Life Stages / 十二运星
+Fase siklus DM di tiap branch: 长生 Growth → 沐浴 Bath → 冠带 Coronation → 临官 Thriving → 帝旺 Prosperous → 衰 Weakening → 病 Illness → 死 Death → 墓 Grave → 绝 Extinction → 胎 Conceived → 养 Nourishing. Menunjukkan kualitas energi DM di setiap dekade Luck Pillar.
+
+---
+
+### Urutan implementasi yang disarankan
+
+```
+1A Ge Ju + Yong Shen  →  1B Luck Pillars  →  2A Hidden Stems  →  2B Stem Combinations  →  2C Kong Wang  →  3A/3B opsional
+```
+
+Setiap fase berdiri sendiri dan langsung meningkatkan kualitas AI output tanpa harus menunggu fase berikutnya selesai.
 
 ### Backend
 ```powershell

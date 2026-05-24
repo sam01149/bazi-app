@@ -295,6 +295,12 @@ async def generate_narasi_endpoint(req: NarasiGenerateRequest, db: AsyncSession 
     ten_gods_map = {tg.position: tg.ten_god for tg in db_chart.ten_gods}
     structured_data = _build_chart_dict(db_chart)
     structured_data["ten_gods"] = ten_gods_map
+    day_stem = db_chart.day_stem
+    structured_data["day_master"] = (
+        f"{day_stem} "
+        f"{HEAVENLY_STEMS_ELEMENT.get(day_stem, '')} "
+        f"{HEAVENLY_STEMS_POLARITY.get(day_stem, '')}"
+    ).strip()
 
     narration = await generate_narasi(structured_data, req.section)
 

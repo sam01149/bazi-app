@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
-  ScrollView, ActivityIndicator, Alert, Switch, Platform,
+  ScrollView, ActivityIndicator, Alert, Switch, Platform, Image,
 } from 'react-native';
 import axios from 'axios';
 import { API_URL } from '../config';
@@ -19,11 +19,7 @@ const PILLAR_LABEL: Record<string, string> = {
 };
 
 const NARASI_SECTIONS = [
-  { key: 'daymaster',    label: 'Kepribadian', icon: '◉' },
-  { key: 'career',       label: 'Karir',       icon: '◈' },
-  { key: 'wealth',       label: 'Kekayaan',    icon: '◆' },
-  { key: 'relationship', label: 'Hubungan',    icon: '◍' },
-  { key: 'strengths',    label: 'Kekuatan',    icon: '◐' },
+  { key: 'full_analysis', label: 'Analisis Lengkap', icon: '◉' },
 ];
 
 const isNarasiError = (text: string): boolean => {
@@ -203,12 +199,7 @@ export default function ProfileScreen() {
     return (
       <ScrollView style={styles.root} contentContainerStyle={styles.setupContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.setupHero}>
-          {Platform.OS === 'web' ? (
-            // @ts-ignore
-            <img src={require('../../assets/logo.svg')} style={{ width: 72, height: 72, borderRadius: 18, marginBottom: 16 }} alt="logo" />
-          ) : (
-            <View style={styles.logoPlaceholder}><Text style={styles.logoChar}>☯</Text></View>
-          )}
+          <Image source={require('../../assets/logo.png')} style={{ width: 72, height: 72, borderRadius: 18, marginBottom: 16 }} />
           <Text style={styles.setupTitle}>BaZi Chart</Text>
           <Text style={styles.setupSubtitle}>Masukkan data kelahiran untuk membaca empat pilar nasibmu</Text>
         </View>
@@ -435,12 +426,6 @@ const styles = StyleSheet.create({
   // ── Setup ──
   setupContainer: { paddingHorizontal: 20, paddingBottom: 48, paddingTop: 24 },
   setupHero:   { alignItems: 'center', marginBottom: 28 },
-  logoPlaceholder: {
-    width: 72, height: 72, borderRadius: 18, backgroundColor: C.surface,
-    alignItems: 'center', justifyContent: 'center', marginBottom: 16,
-    borderWidth: 1, borderColor: C.border,
-  },
-  logoChar:      { fontSize: 36 },
   setupTitle:    { fontSize: 28, fontWeight: '900', color: C.text, letterSpacing: 0.5 },
   setupSubtitle: { fontSize: 14, color: C.textMuted, textAlign: 'center', marginTop: 8, lineHeight: 22, maxWidth: 280 },
 

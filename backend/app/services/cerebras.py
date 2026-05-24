@@ -26,6 +26,31 @@ _CASCADE = [
     ("https://api.cerebras.ai/v1/chat/completions",  "CEREBRAS_API_KEY",  "llama3.1-8b"),
 ]
 
+PROFILE_SYSTEM_PROMPT = """Kamu adalah BaZi Strategic Analyst menggunakan framework Zi Ping Zhen Quan (子平真詮).
+
+Decode chart sebagai pola dan kecenderungan, bukan prediksi absolut.
+WAJIB: setiap pernyataan harus menggunakan framing probabilistik — "kecenderungan", "pola", "cenderung", bukan "akan", "pasti", "selalu".
+DILARANG: membuat interpretasi dari data yang tidak tersedia dalam input.
+BAHASA OUTPUT: Bahasa Indonesia.
+
+Input yang kamu terima:
+- day_master: stem + elemen + polarity
+- pillars: year/month/day/hour stem + branch
+- ten_gods: dominant gods dari stem yang tersedia
+- strength: Strong / Moderate / Weak
+- active_luck_pillar: stem + branch + dekade aktif (jika tersedia)
+
+Analisis dalam urutan ini:
+1. Core identity — Day Master dengan analogi konkret
+2. Element balance — dominasi/defisiensi + dampak ke pola hidup nyata
+3. Kekuatan & blind spots — 3 aset struktural, 3 pola sabotase diri
+4. Karir & kekayaan — lingkungan kerja optimal, gaya menghasilkan
+5. Relasi — pola emosional berdasarkan ten gods (HANYA dari data yang tersedia)
+6. Luck cycle — tema dekade aktif + strategi (HANYA jika active_luck_pillar tersedia)
+
+Tutup dengan: Life Strategy Snapshot
+Format: core nature | best arena | biggest trap | long-term winning move"""
+
 BASE_PROMPT = """Sistem: Analis Data BaZi.
 Framework: Zi Ping Zhen Quan (子平真詮).
 
@@ -36,14 +61,6 @@ ATURAN GLOBAL KETAT:
 - Jika memakai istilah teknis, langsung beri arti singkatnya dalam bahasa sederhana.
 - Deskripsikan kondisi negatif secara telanjang tanpa kata pelunak.
 - Ekstraksi kesimpulan murni berdasarkan kalkulasi struktural interaksi elemen dan Ten Gods.
-"""
-
-PROFILE_TASK_PROMPT = """Tugas: Ekstraksi metrik psikologis dan strategis dari data BaZi terstruktur (Profil Natal).
-
-ATURAN SPESIFIK:
-1. Jelaskan bagian yang paling kuat dan bagian yang paling rentan dengan bahasa sederhana.
-2. Prefix kalimat pertama: "Berdasarkan analisis struktural Zi Ping Zhen Quan:"
-3. Format keluaran: Maksimal 3 paragraf per section, padat informasi.
 """
 
 STRATEGY_TASK_PROMPT = """Tugas: Evaluasi kelayakan (feasibility) target pengguna terhadap konfigurasi Ten Gods dan elemen chart.
@@ -126,11 +143,18 @@ async def _call_ai(messages: list, max_tokens: int = 1000) -> str:
 
 
 async def generate_narasi(chart_data: Dict[str, Any], section: str) -> str:
+    payload = {
+        "day_master": chart_data.get("day_master", ""),
+        "pillars": chart_data.get("pillars", {}),
+        "ten_gods": chart_data.get("ten_gods", {}),
+        "strength": chart_data.get("strength", chart_data.get("day_master_strength", "")),
+        "active_luck_pillar": chart_data.get("active_luck_pillar"),
+    }
     messages = [
-        {"role": "system", "content": _compose_system_prompt(PROFILE_TASK_PROMPT)},
-        {"role": "user", "content": json.dumps({"chart_data": chart_data, "section": section}, ensure_ascii=False)},
+        {"role": "system", "content": PROFILE_SYSTEM_PROMPT},
+        {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
     ]
-    return await _call_ai(messages, max_tokens=1000)
+    return await _call_ai(messages, max_tokens=2000)
 
 
 async def generate_wish_analysis(chart_data: Dict[str, Any], wish_content: str) -> str:

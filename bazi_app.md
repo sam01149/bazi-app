@@ -95,7 +95,7 @@ POST /api/charts/calculate
 POST /api/narasi/generate
 {
   "chart_id": "uuid-dari-chart",
-  "section": "daymaster"  // atau: career, wealth, relationship
+  "section": "full_analysis"
 }
 ```
 
@@ -165,8 +165,7 @@ App (BottomTabNavigator)
           → POST /api/charts/calculate → simpan ke AsyncStorage
       → Jika sudah ada chart: GET /api/profile/{chart_id}
           → Tampil 4 pilar, Ten Gods, Day Master Strength
-          → Tombol narasi: Kepribadian/Karir/Kekayaan/Hubungan/Kekuatan
-              → POST /api/narasi/generate (cached di DB)
+          → Tombol "Analisis Lengkap" → POST /api/narasi/generate (cached di DB, key: full_analysis)
           → Data kelahiran, tombol Reset Profil
 ```
 
@@ -197,7 +196,7 @@ git push hf master:main
 
 ---
 
-## Status Saat Ini (2026-05-24 — update 5)
+## Status Saat Ini (2026-05-24 — update 6)
 
 ### Sudah Selesai ✅
 - Kalkulasi semua pilar (Year, Month, Day, Hour)
@@ -208,7 +207,7 @@ git push hf master:main
 - Frontend: date/time picker native HTML untuk web, timezone preset WIB/WITA/WIT
 - Frontend: bottom tab navigation (Kalender / Keinginan / Profil)
 - Frontend: ChartContext — chartId & timezone persisten via AsyncStorage
-- ProfileScreen: onboarding + chart view + 5 narasi sections (Kepribadian/Karir/Kekayaan/Hubungan/Kekuatan)
+- ProfileScreen: onboarding + chart view + 1 narasi section (Analisis Lengkap — comprehensive single-call)
 - WishScreen: tulis keinginan + analisis BaZi via AI (Cerebras)
 - CalendarScreen: kalender grid bulanan + pilar hari ini + interaksi (tanpa AI narasi otomatis)
 - Backend: endpoint `/profile/{chart_id}` dengan cached narasi
@@ -239,6 +238,9 @@ git push hf master:main
 - Update: prompt AI utama ditulis ulang menjadi mode struktural, strategis, dan dinamika waktu yang lebih klinis/taktis
 - Update: prompt AI sekarang dipisah jadi 3 blok utama plus template payload yang konsisten di [bazi_prompt.md](bazi_prompt.md)
 - Update: prompt AI disederhanakan lagi agar istilah teknis lebih mudah dipahami dan dijelaskan singkat jika dipakai
+- Update: prompt AI profile diganti total ke `PROFILE_SYSTEM_PROMPT` — BaZi Strategic Analyst dengan 6 seksi + Life Strategy Snapshot; framing probabilistik wajib; single comprehensive call per chart; day_master dikirim lengkap (stem + element + polarity); max_tokens naik ke 2000
+- Update: ProfileScreen — 5 tombol narasi digabung jadi 1 tombol "Analisis Lengkap"; backend narasi di-cache dengan key `full_analysis`
+- Update: logo diganti dari logo.svg ke logo.png (web + native pakai Image component React Native)
 
 ### Belum Ada / Known Issues ⚠️
 - **Tidak ada unit tests** — engine calculation belum ditest

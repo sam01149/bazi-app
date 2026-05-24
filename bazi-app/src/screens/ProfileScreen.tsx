@@ -143,21 +143,28 @@ export default function ProfileScreen() {
   };
 
   const confirmReset = () => {
+    const doReset = async () => {
+      await clearChart();
+      setChartData(null);
+      setCachedSections({});
+      setNarasi('');
+      setActiveSection('');
+    };
+
+    if (Platform.OS === 'web') {
+      // Alert.alert multi-button doesn't work on React Native Web
+      if (window.confirm('Reset Profil?\n\nChart di server tetap ada. Perangkat ini akan lupa profil ini.')) {
+        doReset();
+      }
+      return;
+    }
+
     Alert.alert(
       'Reset Profil',
       'Chart di server tetap ada. Perangkat ini akan lupa profil ini. Lanjutkan?',
       [
         { text: 'Batal', style: 'cancel' },
-        {
-          text: 'Reset', style: 'destructive',
-          onPress: async () => {
-            await clearChart();
-            setChartData(null);
-            setCachedSections({});
-            setNarasi('');
-            setActiveSection('');
-          },
-        },
+        { text: 'Reset', style: 'destructive', onPress: doReset },
       ]
     );
   };

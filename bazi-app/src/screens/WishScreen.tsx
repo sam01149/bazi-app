@@ -79,20 +79,25 @@ export default function WishScreen() {
 
   const deleteWish = (wish: Wish) => {
     const preview = wish.content.length > 40 ? `${wish.content.slice(0, 40)}…` : wish.content;
+
+    const doDelete = async () => {
+      try {
+        await axios.delete(`${API_URL}/wishes/${wish.id}`);
+        setWishes(prev => prev.filter(w => w.id !== wish.id));
+        if (expandedId === wish.id) setExpandedId(null);
+      } catch {
+        Alert.alert('Gagal', 'Tidak dapat menghapus.');
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm(`Hapus keinginan ini?\n\n"${preview}"`)) doDelete();
+      return;
+    }
+
     Alert.alert('Hapus Keinginan', `Hapus "${preview}"?`, [
       { text: 'Batal', style: 'cancel' },
-      {
-        text: 'Hapus', style: 'destructive',
-        onPress: async () => {
-          try {
-            await axios.delete(`${API_URL}/wishes/${wish.id}`);
-            setWishes(prev => prev.filter(w => w.id !== wish.id));
-            if (expandedId === wish.id) setExpandedId(null);
-          } catch {
-            Alert.alert('Gagal', 'Tidak dapat menghapus.');
-          }
-        },
-      },
+      { text: 'Hapus', style: 'destructive', onPress: doDelete },
     ]);
   };
 

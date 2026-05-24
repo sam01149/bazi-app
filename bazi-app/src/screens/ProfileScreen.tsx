@@ -26,6 +26,18 @@ const NARASI_SECTIONS = [
   { key: 'strengths',    label: 'Kekuatan',    icon: '◐' },
 ];
 
+const isNarasiError = (text: string): boolean => {
+  if (!text || text.length < 80) return true;
+  return (
+    text.startsWith('Gagal') ||
+    text.includes('HTTP 4') ||
+    text.includes('rate limit') ||
+    text.includes('API key') ||
+    text.includes('Semua model') ||
+    text.includes('Periksa API')
+  );
+};
+
 function WebDateInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
     <input
@@ -84,7 +96,12 @@ export default function ProfileScreen() {
     try {
       const res = await axios.get(`${API_URL}/profile/${id}`);
       setChartData(res.data.chart);
-      setCachedSections(res.data.cached_sections ?? {});
+      // Filter out stale error entries that got cached in a previous session
+      const raw: Record<string, string> = res.data.cached_sections ?? {};
+      const filtered = Object.fromEntries(
+        Object.entries(raw).filter(([, v]) => !isNarasiError(v))
+      );
+      setCachedSections(filtered);
     } catch {
       // silent
     } finally {
@@ -122,10 +139,10 @@ export default function ProfileScreen() {
     }
   };
 
-  const generateNarasi = async (section: string) => {
+  const generateNarasi = async (section: string, forceRefresh = false) => {
     if (!chartId) return;
     setActiveSection(section);
-    if (cachedSections[section]) {
+    if (!forceRefresh && cachedSections[section]) {
       setNarasi(cachedSections[section]);
       return;
     }
@@ -133,8 +150,11 @@ export default function ProfileScreen() {
     setNarasi('');
     try {
       const res = await axios.post(`${API_URL}/narasi/generate`, { chart_id: chartId, section });
-      setNarasi(res.data.narasi);
-      setCachedSections(prev => ({ ...prev, [section]: res.data.narasi }));
+      const text: string = res.data.narasi;
+      setNarasi(text);
+      if (!isNarasiError(text)) {
+        setCachedSections(prev => ({ ...prev, [section]: text }));
+      }
     } catch (err: any) {
       const detail = err?.response?.data?.detail;
       setNarasi(detail ?? 'Gagal menghasilkan narasi. Silakan coba lagi.');
@@ -360,11 +380,23 @@ export default function ProfileScreen() {
           )}
 
           {!!narasi && !narasiLoading && (
-            <View style={styles.narasiBox}>
-              <Text style={styles.narasiBoxLabel}>
-                {NARASI_SECTIONS.find(s => s.key === activeSection)?.label}
+            <View style={[styles.narasiBox, isNarasiError(narasi) && styles.narasiBoxError]}>
+              <View style={styles.narasiBoxHeader}>
+                <Text style={styles.narasiBoxLabel}>
+                  {NARASI_SECTIONS.find(s => s.key === activeSection)?.label}
+                </Text>
+                {isNarasiError(narasi) && (
+                  <TouchableOpacity
+                    style={styles.retryBtn}
+                    onPress={() => generateNarasi(activeSection, true)}
+                  >
+                    <Text style={styles.retryBtnText}>↻ Coba Lagi</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              <Text style={[styles.narasiBoxText, isNarasiError(narasi) && styles.narasiErrorText]}>
+                {narasi}
               </Text>
-              <Text style={styles.narasiBoxText}>{narasi}</Text>
             </View>
           )}
 
@@ -541,8 +573,20 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 20,
   },
-  narasiBoxLabel: { fontSize: 11, fontWeight: '900', color: C.gold, marginBottom: 10, letterSpacing: 0.8 },
-  narasiBoxText:  { fontSize: 14, lineHeight: 24, color: C.text },
+  narasiBoxError:  { borderLeftColor: '#c0392b', borderColor: '#c0392b44' },
+  narasiBoxHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  narasiBoxLabel:  { fontSize: 11, fontWeight: '900', color: C.gold, letterSpacing: 0.8 },
+  narasiBoxText:   { fontSize: 14, lineHeight: 24, color: C.text },
+  narasiErrorText: { color: '#e07070', fontSize: 13 },
+  retryBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#c0392b88',
+    backgroundColor: '#c0392b22',
+  },
+  retryBtnText: { fontSize: 12, fontWeight: '700', color: '#e07070' },
 
   birthCard: {
     backgroundColor: C.surface,

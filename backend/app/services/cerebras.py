@@ -25,6 +25,15 @@ ATURAN KETAT:
 
 _ERROR_PREFIX = "ERROR:"
 
+# Phrases that only appear in error messages, never in real narasi content
+_ERROR_PHRASES = [
+    "Gagal menghasilkan narasi",
+    "rate limited",
+    "API key tidak",
+    "Periksa API key",
+    "Semua model sedang",
+]
+
 # Model cascade: jika model utama 429, otomatis coba model berikutnya
 _MODEL_CASCADE = [
     "qwen-3-235b-a22b-instruct-2507",
@@ -35,7 +44,13 @@ _MODEL_CASCADE = [
 
 
 def is_error_narasi(text: str) -> bool:
-    return text.startswith(_ERROR_PREFIX)
+    """True jika teks adalah pesan error, bukan narasi nyata."""
+    if not text or len(text) < 80:
+        return True
+    if text.startswith(_ERROR_PREFIX):
+        return True
+    # Deteksi format error lama yang tersimpan di cache tanpa prefix "ERROR:"
+    return any(phrase in text for phrase in _ERROR_PHRASES)
 
 
 async def _try_model(model: str, messages: list, max_tokens: int) -> tuple[str | None, bool]:

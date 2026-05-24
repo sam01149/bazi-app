@@ -138,10 +138,12 @@ def get_month_pillar(year_stem: str, target_date: datetime.datetime) -> tuple[st
     return stem, branch
 
 def get_day_pillar(target_date: datetime.date) -> tuple[str, str]:
-    # 2000-01-01 was 甲子 (Jiazi) index 0 according to brief
+    # Jan 1, 2000 = jiazi index 54 (戊午)
+    # Derived from: Jan 1, 1900 = 甲戌 (index 10); 36524 days to Jan 1 2000; (10+44)%60=54
     anchor = datetime.date(2000, 1, 1)
+    ANCHOR_JIAZI = 54
     delta = (target_date - anchor).days
-    jiazi_index = delta % 60
+    jiazi_index = (delta + ANCHOR_JIAZI) % 60
     stem = HEAVENLY_STEMS[jiazi_index % 10]
     branch = EARTHLY_BRANCHES[jiazi_index % 12]
     return stem, branch

@@ -112,7 +112,7 @@ POST /api/narasi/generate
 - Stem dihitung via Five Tigers Method (五虎遁年起月法)
 
 ### Day Pillar
-- Anchor: 2000-01-01 = 甲子 (index 0)
+- Anchor: 2000-01-01 = 戊午 (index 54) — bukan 甲子! Derived: Jan 1 1900 = 甲戌 (10), +36524 days → (10+44)%60=54
 - Pakai local date (bukan UTC) — hari BaZi ikut tengah malam lokal
 
 ### Hour Pillar
@@ -196,7 +196,7 @@ git push hf master:main
 
 ---
 
-## Status Saat Ini (2026-05-24 — update 2)
+## Status Saat Ini (2026-05-24 — update 3)
 
 ### Sudah Selesai ✅
 - Kalkulasi semua pilar (Year, Month, Day, Hour)
@@ -226,6 +226,8 @@ git push hf master:main
 - Fix: `tzinfo=None` sebelum insert ke TIMESTAMP WITHOUT TIME ZONE
 - Fix: semua `chart_id` pakai `str` bukan `UUID` (VARCHAR column mismatch)
 - Fix: CORS `allow_credentials=False` (wildcard origin + credentials tidak valid)
+- Fix: Day pillar anchor salah — Jan 1 2000 adalah jiazi 54 (戊午), bukan 0 (甲子); semua pilar hari kini akurat (diverifikasi vs chart Joey Yap)
+- Logo: semua asset diganti dengan logo custom (sun navy+gold) — favicon, icon, android icons, splash
 
 ### Belum Ada / Known Issues ⚠️
 - **Tidak ada unit tests** — engine calculation belum ditest

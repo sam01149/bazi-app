@@ -196,7 +196,7 @@ git push hf master:main
 
 ---
 
-## Status Saat Ini (2026-05-24 — update 3)
+## Status Saat Ini (2026-05-24 — update 4)
 
 ### Sudah Selesai ✅
 - Kalkulasi semua pilar (Year, Month, Day, Hour)
@@ -228,6 +228,8 @@ git push hf master:main
 - Fix: CORS `allow_credentials=False` (wildcard origin + credentials tidak valid)
 - Fix: Day pillar anchor salah — Jan 1 2000 adalah jiazi 54 (戊午), bukan 0 (甲子); semua pilar hari kini akurat (diverifikasi vs chart Joey Yap)
 - Logo: semua asset diganti dengan logo custom (sun navy+gold) — favicon, icon, android icons, splash
+- Fix: narasi tab "Hubungan" & "Kekuatan" — error lama tersimpan di DB cache tanpa prefix "ERROR:"; `is_error_narasi` diperluas mendeteksi format lama; frontend tidak lagi cache error response; tombol "↻ Coba Lagi" muncul saat narasi gagal
+- Fix: delete keinginan di web — `Alert.alert` multi-button broken di RN Web, pakai `window.confirm` (pola sama seperti Reset Profil)
 
 ### Belum Ada / Known Issues ⚠️
 - **Tidak ada unit tests** — engine calculation belum ditest

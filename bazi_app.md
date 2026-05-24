@@ -196,7 +196,7 @@ git push hf master:main
 
 ---
 
-## Status Saat Ini (2026-05-24)
+## Status Saat Ini (2026-05-24 — update 2)
 
 ### Sudah Selesai ✅
 - Kalkulasi semua pilar (Year, Month, Day, Hour)
@@ -209,11 +209,16 @@ git push hf master:main
 - Frontend: ChartContext — chartId & timezone persisten via AsyncStorage
 - ProfileScreen: onboarding + chart view + 5 narasi sections (Kepribadian/Karir/Kekayaan/Hubungan/Kekuatan)
 - WishScreen: tulis keinginan + analisis BaZi via AI (Cerebras)
-- CalendarScreen: kalender grid bulanan + pilar hari ini + AI narasi + interaksi
+- CalendarScreen: kalender grid bulanan + pilar hari ini + interaksi (tanpa AI narasi otomatis)
 - Backend: endpoint `/profile/{chart_id}` dengan cached narasi
 - Backend: CRUD `/wishes` + `/wishes/{id}/analyze`
-- Backend: `generate_calendar_narasi` untuk interpretasi energi hari ini
 - Backend: `CachedNarasi` DB model — narasi di-cache per section
+- UI redesign: shared `src/theme.ts` (amber-gold `#C8A83C`, warm text `#EDE8DB`)
+- UI: ProfileScreen Day Master hero card, pillar grid, narasi topic buttons
+- UI: CalendarScreen element color accents per pilar, badge interaksi
+- UI: WishScreen input card, expandable wish cards
+- Hapus AI narasi kalender harian (latency tinggi, nilai informasi rendah)
+- Hapus: file lama — `App.nav.tsx`, `ChartScreen.tsx`, `OnboardingScreen.tsx`
 - Deployment: backend di HF Spaces, frontend di Vercel, DB di Supabase
 - AI narasi async dengan httpx, full pillar context dikirim ke Cerebras
 - Fix: `FLG_MOSEPH` untuk ephemeris tanpa file eksternal

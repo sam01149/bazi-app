@@ -6,18 +6,7 @@ import {
 import axios from 'axios';
 import { API_URL } from '../config';
 import { useChart } from '../context/ChartContext';
-
-const C = {
-  bgDeep:  '#070F2B',
-  bgCard:  '#0D1F4E',
-  bgInput: '#091640',
-  border:  '#1E3A80',
-  gold:    '#F8D21B',
-  white:   '#FFFFFF',
-  muted:   '#8BAAD4',
-  faint:   '#3A5A9A',
-  error:   '#FF6B6B',
-};
+import { C } from '../theme';
 
 interface Wish {
   id: string;
@@ -26,14 +15,24 @@ interface Wish {
   created_at: string;
 }
 
+const MONTHS_ID = [
+  'Jan','Feb','Mar','Apr','Mei','Jun',
+  'Jul','Agu','Sep','Okt','Nov','Des',
+];
+
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getDate()} ${MONTHS_ID[d.getMonth()]} ${d.getFullYear()}`;
+}
+
 export default function WishScreen() {
   const { chartId } = useChart();
-  const [wishes,      setWishes]      = useState<Wish[]>([]);
-  const [loading,     setLoading]     = useState(true);
-  const [inputText,   setInputText]   = useState('');
-  const [saving,      setSaving]      = useState(false);
-  const [analyzing,   setAnalyzing]   = useState<string | null>(null);
-  const [expandedId,  setExpandedId]  = useState<string | null>(null);
+  const [wishes,     setWishes]     = useState<Wish[]>([]);
+  const [loading,    setLoading]    = useState(true);
+  const [inputText,  setInputText]  = useState('');
+  const [saving,     setSaving]     = useState(false);
+  const [analyzing,  setAnalyzing]  = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const fetchWishes = useCallback(async () => {
     if (!chartId) { setLoading(false); return; }
@@ -51,11 +50,7 @@ export default function WishScreen() {
 
   const saveWish = async () => {
     const text = inputText.trim();
-    if (!text) return;
-    if (!chartId) {
-      Alert.alert('Profil Belum Ada', 'Buat profil BaZi di tab Profil terlebih dahulu.');
-      return;
-    }
+    if (!text || !chartId) return;
     setSaving(true);
     try {
       const res = await axios.post(`${API_URL}/wishes`, { chart_id: chartId, content: text });
@@ -92,6 +87,7 @@ export default function WishScreen() {
           try {
             await axios.delete(`${API_URL}/wishes/${wish.id}`);
             setWishes(prev => prev.filter(w => w.id !== wish.id));
+            if (expandedId === wish.id) setExpandedId(null);
           } catch {
             Alert.alert('Gagal', 'Tidak dapat menghapus.');
           }
@@ -100,29 +96,31 @@ export default function WishScreen() {
     ]);
   };
 
-  const toggleExpand = (id: string) => {
-    setExpandedId(prev => prev === id ? null : id);
-  };
+  const toggleExpand = (id: string) => setExpandedId(prev => prev === id ? null : id);
 
   if (!chartId) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.emptyIcon}>✨</Text>
-        <Text style={styles.emptyTitle}>Profil Belum Ada</Text>
-        <Text style={styles.emptyDesc}>
-          Buat profil BaZi kamu dulu di tab Profil, lalu kembali ke sini untuk menuliskan keinginanmu.
+      <View style={styles.noChartContainer}>
+        <Text style={styles.noChartIcon}>✦</Text>
+        <Text style={styles.noChartTitle}>Mulai dengan Profilmu</Text>
+        <Text style={styles.noChartDesc}>
+          Buat profil BaZi di tab Profil terlebih dahulu, lalu kembali ke sini untuk menuliskan keinginanmu dan mendapatkan pembacaan yang personal.
         </Text>
       </View>
     );
   }
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-
+    <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         {/* Input area */}
         <View style={styles.inputCard}>
           <Text style={styles.inputLabel}>Tulis keinginanmu</Text>
+          <Text style={styles.inputHint}>AI akan menganalisisnya berdasarkan chart BaZi kamu</Text>
           <TextInput
             style={styles.textArea}
             multiline
@@ -130,183 +128,202 @@ export default function WishScreen() {
             value={inputText}
             onChangeText={setInputText}
             placeholder="Aku ingin…"
-            placeholderTextColor={C.faint}
+            placeholderTextColor={C.textFaint}
             textAlignVertical="top"
           />
           <TouchableOpacity
             style={[styles.saveBtn, (!inputText.trim() || saving) && styles.saveBtnDisabled]}
             onPress={saveWish}
             disabled={!inputText.trim() || saving}
+            activeOpacity={0.85}
           >
             {saving
-              ? <ActivityIndicator size="small" color={C.bgDeep} />
-              : <Text style={styles.saveBtnText}>Simpan Keinginan →</Text>
+              ? <ActivityIndicator size="small" color={C.bg} />
+              : <Text style={styles.saveBtnText}>Simpan →</Text>
             }
           </TouchableOpacity>
         </View>
 
         {/* Wishes list */}
         {loading ? (
-          <ActivityIndicator color={C.gold} style={{ marginTop: 24 }} />
+          <View style={styles.loadingRow}>
+            <ActivityIndicator color={C.gold} size="small" />
+            <Text style={styles.loadingText}>Memuat keinginan…</Text>
+          </View>
         ) : wishes.length === 0 ? (
-          <View style={styles.emptyListCard}>
-            <Text style={styles.emptyListText}>
-              Belum ada keinginan yang tersimpan. Tulis keinginanmu di atas!
-            </Text>
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>Belum ada keinginan</Text>
+            <Text style={styles.emptyDesc}>Tulis keinginanmu di atas dan biarkan BaZi membantu kamu melihat polanya.</Text>
           </View>
         ) : (
-          wishes.map((wish) => {
-            const expanded = expandedId === wish.id;
-            const isAnalyzing = analyzing === wish.id;
-            return (
-              <View key={wish.id} style={styles.wishCard}>
-                <TouchableOpacity onPress={() => toggleExpand(wish.id)} activeOpacity={0.8}>
-                  <Text style={styles.wishContent}>{wish.content}</Text>
-                  <Text style={styles.wishDate}>{formatDate(wish.created_at)}</Text>
-                </TouchableOpacity>
+          <>
+            <Text style={styles.listLabel}>TERSIMPAN ({wishes.length})</Text>
+            {wishes.map(wish => {
+              const expanded    = expandedId === wish.id;
+              const isAnalyzing = analyzing === wish.id;
+              return (
+                <View key={wish.id} style={styles.wishCard}>
+                  <TouchableOpacity onPress={() => toggleExpand(wish.id)} activeOpacity={0.85}>
+                    <Text style={styles.wishContent}>{wish.content}</Text>
+                    <Text style={styles.wishDate}>{formatDate(wish.created_at)}</Text>
+                  </TouchableOpacity>
 
-                {expanded && (
-                  <>
-                    {isAnalyzing ? (
-                      <View style={styles.analyzingRow}>
-                        <ActivityIndicator size="small" color={C.gold} />
-                        <Text style={styles.analyzingText}>AI sedang menganalisis berdasarkan chart BaZi kamu…</Text>
-                      </View>
-                    ) : wish.analysis ? (
-                      <View style={styles.analysisBox}>
-                        <Text style={styles.analysisLabel}>Analisis BaZi</Text>
-                        <Text style={styles.analysisText}>{wish.analysis}</Text>
-                      </View>
-                    ) : (
-                      <TouchableOpacity
-                        style={styles.analyzeBtn}
-                        onPress={() => analyzeWish(wish)}
-                      >
-                        <Text style={styles.analyzeBtnText}>✦ Analisis dengan BaZi Chart</Text>
+                  {expanded && (
+                    <View style={styles.wishExpanded}>
+                      {isAnalyzing ? (
+                        <View style={styles.analyzingRow}>
+                          <ActivityIndicator size="small" color={C.gold} />
+                          <Text style={styles.analyzingText}>AI membaca chart BaZi kamu…</Text>
+                        </View>
+                      ) : wish.analysis ? (
+                        <View style={styles.analysisBox}>
+                          <Text style={styles.analysisLabel}>Pembacaan BaZi</Text>
+                          <Text style={styles.analysisText}>{wish.analysis}</Text>
+                        </View>
+                      ) : (
+                        <TouchableOpacity
+                          style={styles.analyzeBtn}
+                          onPress={() => analyzeWish(wish)}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={styles.analyzeBtnText}>✦ Analisis dengan Chart BaZi</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )}
+
+                  <View style={styles.wishFooter}>
+                    <TouchableOpacity onPress={() => toggleExpand(wish.id)} style={styles.footerBtn}>
+                      <Text style={styles.footerBtnText}>{expanded ? 'Tutup' : wish.analysis ? 'Lihat Pembacaan' : 'Buka'}</Text>
+                    </TouchableOpacity>
+                    {wish.analysis && expanded && (
+                      <TouchableOpacity onPress={() => analyzeWish(wish)} style={styles.footerBtn}>
+                        <Text style={[styles.footerBtnText, { color: C.gold }]}>Analisis Ulang</Text>
                       </TouchableOpacity>
                     )}
-                  </>
-                )}
-
-                <View style={styles.wishActions}>
-                  <TouchableOpacity onPress={() => toggleExpand(wish.id)} style={styles.actionBtn}>
-                    <Text style={styles.actionBtnText}>{expanded ? 'Tutup ↑' : 'Lihat ↓'}</Text>
-                  </TouchableOpacity>
-                  {wish.analysis && expanded && (
-                    <TouchableOpacity onPress={() => analyzeWish(wish)} style={styles.actionBtn}>
-                      <Text style={[styles.actionBtnText, { color: C.gold }]}>Analisis Ulang</Text>
+                    <TouchableOpacity onPress={() => deleteWish(wish)} style={styles.footerBtn}>
+                      <Text style={[styles.footerBtnText, { color: C.red }]}>Hapus</Text>
                     </TouchableOpacity>
-                  )}
-                  <TouchableOpacity onPress={() => deleteWish(wish)} style={styles.actionBtn}>
-                    <Text style={[styles.actionBtnText, { color: C.error }]}>Hapus</Text>
-                  </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
-            );
-          })
+              );
+            })}
+          </>
         )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
-}
-
 const styles = StyleSheet.create({
-  container: { flexGrow: 1, backgroundColor: C.bgDeep, padding: 20, paddingBottom: 48 },
-  center:    { flex: 1, backgroundColor: C.bgDeep, alignItems: 'center', justifyContent: 'center', padding: 32 },
-  emptyIcon: { fontSize: 48, marginBottom: 12 },
-  emptyTitle:{ fontSize: 20, fontWeight: '800', color: C.white, marginBottom: 8, textAlign: 'center' },
-  emptyDesc: { fontSize: 14, color: C.muted, textAlign: 'center', lineHeight: 22 },
+  root: { flex: 1, backgroundColor: C.bg },
+  container: { padding: 16, paddingBottom: 48 },
+
+  noChartContainer: {
+    flex: 1, backgroundColor: C.bg,
+    alignItems: 'center', justifyContent: 'center',
+    padding: 36,
+  },
+  noChartIcon:  { fontSize: 40, color: C.gold, marginBottom: 16 },
+  noChartTitle: { fontSize: 20, fontWeight: '800', color: C.text, marginBottom: 10, textAlign: 'center' },
+  noChartDesc:  { fontSize: 14, color: C.textMuted, textAlign: 'center', lineHeight: 22 },
 
   inputCard: {
-    backgroundColor: C.bgCard,
-    borderWidth: 1,
-    borderColor: C.border,
+    backgroundColor: C.surface,
     borderRadius: 16,
     padding: 16,
     marginBottom: 20,
+    borderWidth: 1,
+    borderColor: C.border,
   },
-  inputLabel: { fontSize: 15, fontWeight: '700', color: C.white, marginBottom: 10 },
+  inputLabel: { fontSize: 16, fontWeight: '800', color: C.text, marginBottom: 4 },
+  inputHint:  { fontSize: 12, color: C.textMuted, marginBottom: 12, lineHeight: 18 },
   textArea: {
-    backgroundColor: C.bgInput,
+    backgroundColor: C.bg,
     borderWidth: 1.5,
     borderColor: C.border,
-    borderRadius: 10,
-    padding: 12,
-    color: C.white,
+    borderRadius: 12,
+    padding: 13,
+    color: C.text,
     fontSize: 15,
-    minHeight: 100,
+    minHeight: 110,
     marginBottom: 12,
+    lineHeight: 22,
   },
   saveBtn: {
     backgroundColor: C.gold,
     paddingVertical: 13,
-    borderRadius: 10,
+    borderRadius: 12,
     alignItems: 'center',
   },
-  saveBtnDisabled: { opacity: 0.4 },
-  saveBtnText: { color: C.bgDeep, fontWeight: '800', fontSize: 15 },
+  saveBtnDisabled: { opacity: 0.35 },
+  saveBtnText:     { color: C.bg, fontWeight: '800', fontSize: 15 },
 
-  emptyListCard: {
-    backgroundColor: C.bgCard,
+  loadingRow:  { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 16 },
+  loadingText: { color: C.textMuted, fontSize: 14 },
+
+  emptyCard: {
+    backgroundColor: C.surface,
+    borderRadius: 14,
+    padding: 24,
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: C.border,
-    borderRadius: 12,
-    padding: 20,
-    alignItems: 'center',
   },
-  emptyListText: { color: C.muted, textAlign: 'center', lineHeight: 22, fontSize: 14 },
+  emptyTitle: { fontSize: 16, fontWeight: '800', color: C.text, marginBottom: 8 },
+  emptyDesc:  { fontSize: 14, color: C.textMuted, textAlign: 'center', lineHeight: 22 },
+
+  listLabel: {
+    fontSize: 11, fontWeight: '800', color: C.textFaint,
+    letterSpacing: 1.5, marginBottom: 10,
+  },
 
   wishCard: {
-    backgroundColor: C.bgCard,
-    borderWidth: 1,
-    borderColor: C.border,
+    backgroundColor: C.surface,
     borderRadius: 14,
     padding: 14,
-    marginBottom: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: C.border,
   },
-  wishContent: { fontSize: 15, color: C.white, lineHeight: 22, marginBottom: 4 },
-  wishDate:    { fontSize: 12, color: C.faint },
+  wishContent: { fontSize: 15, color: C.text, lineHeight: 23, marginBottom: 6 },
+  wishDate:    { fontSize: 12, color: C.textFaint },
 
-  wishActions: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 10,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: C.border,
-  },
-  actionBtn:    { paddingHorizontal: 4 },
-  actionBtnText:{ fontSize: 13, color: C.muted, fontWeight: '600' },
+  wishExpanded: { marginTop: 12 },
+
+  analyzingRow:  { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  analyzingText: { color: C.textMuted, fontSize: 13, flex: 1 },
 
   analyzeBtn: {
-    backgroundColor: '#0F2860',
+    backgroundColor: C.surfaceHigh,
     borderWidth: 1,
     borderColor: C.gold,
-    borderRadius: 8,
-    padding: 11,
+    borderRadius: 10,
+    paddingVertical: 11,
     alignItems: 'center',
-    marginTop: 10,
   },
-  analyzeBtnText: { color: C.gold, fontWeight: '700', fontSize: 14 },
-
-  analyzingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 },
-  analyzingText: { color: C.muted, fontSize: 13, flex: 1 },
+  analyzeBtnText: { color: C.goldSoft, fontWeight: '700', fontSize: 14 },
 
   analysisBox: {
-    backgroundColor: '#091640',
+    backgroundColor: C.bg,
     borderWidth: 1,
     borderColor: C.border,
     borderLeftWidth: 3,
     borderLeftColor: C.gold,
     borderRadius: 10,
-    padding: 12,
-    marginTop: 10,
+    padding: 13,
   },
-  analysisLabel: { fontSize: 12, fontWeight: '800', color: C.gold, marginBottom: 6, letterSpacing: 0.5 },
-  analysisText:  { fontSize: 14, color: C.white, lineHeight: 22 },
+  analysisLabel: { fontSize: 11, fontWeight: '900', color: C.gold, marginBottom: 8, letterSpacing: 0.8 },
+  analysisText:  { fontSize: 14, color: C.text, lineHeight: 23 },
+
+  wishFooter: {
+    flexDirection: 'row',
+    gap: 16,
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+  },
+  footerBtn:     { paddingVertical: 2 },
+  footerBtnText: { fontSize: 13, color: C.textMuted, fontWeight: '600' },
 });

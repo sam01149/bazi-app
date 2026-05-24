@@ -52,7 +52,6 @@ class CalendarResponse(BaseModel):
     current_pillars: PillarsSchema
     interactions: List[InteractionSchema]
     date_str: Optional[str] = None
-    narasi: Optional[str] = None
 
 # Wish schemas
 class WishCreateRequest(BaseModel):

@@ -2,7 +2,7 @@ import os
 import json
 import logging
 import httpx
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
@@ -84,29 +84,3 @@ ATURAN:
     return await _call_cerebras(messages, max_tokens=1200)
 
 
-async def generate_calendar_narasi(
-    chart_data: Dict[str, Any],
-    calendar_data: Dict[str, Any],
-    interactions: List[Dict[str, Any]],
-) -> str:
-    system = """Kamu adalah interpreter BaZi menggunakan framework Zi Ping Zhen Quan (子平真詮).
-Berdasarkan chart natal pengguna dan energi kalender BaZi hari ini, tulis ringkasan singkat:
-1. Bagaimana energi hari ini berinteraksi dengan chart natal?
-2. Apa yang perlu diperhatikan atau dimanfaatkan hari ini?
-
-ATURAN:
-- Bahasa Indonesia, ringkas (maksimal 2 paragraf)
-- Conversational, tidak terlalu formal
-- Framing probabilistik
-"""
-    user_content = json.dumps({
-        "chart_natal": chart_data,
-        "kalender_hari_ini": calendar_data["pillars"],
-        "interaksi": interactions,
-    }, ensure_ascii=False)
-
-    messages = [
-        {"role": "system", "content": system},
-        {"role": "user", "content": user_content},
-    ]
-    return await _call_cerebras(messages, max_tokens=600)

@@ -17,7 +17,7 @@ from app.models.domain import BaZiChart, TenGod, Wish, CachedNarasi
 from app.engine.calculator import get_bazi_chart, get_solar_term_date
 from app.engine.interactions import detect_calendar_interactions
 from app.engine.tables import HEAVENLY_STEMS_ELEMENT, HEAVENLY_STEMS_POLARITY
-from app.services.cerebras import generate_narasi, generate_wish_analysis, generate_calendar_narasi
+from app.services.cerebras import generate_narasi, generate_wish_analysis
 
 router = APIRouter()
 
@@ -140,7 +140,7 @@ async def get_current_calendar(timezone: str = "UTC", chart_id: Optional[str] = 
         raise HTTPException(status_code=400, detail="Invalid timezone")
 
     now = datetime.now(tz)
-    return await _build_calendar_response(now, chart_id, db, with_narasi=True)
+    return await _build_calendar_response(now, chart_id, db)
 
 
 @router.get("/calendar/date/{date_str}", response_model=CalendarResponse)
@@ -161,14 +161,13 @@ async def get_calendar_for_date(
         raise HTTPException(status_code=400, detail="date_str must be YYYY-MM-DD")
 
     dt_aware = tz.localize(datetime(d.year, d.month, d.day, 12, 0))
-    return await _build_calendar_response(dt_aware, chart_id, db, with_narasi=False)
+    return await _build_calendar_response(dt_aware, chart_id, db)
 
 
 async def _build_calendar_response(
     dt_aware: datetime,
     chart_id: Optional[str],
     db: AsyncSession,
-    with_narasi: bool,
 ) -> CalendarResponse:
     cal = get_bazi_chart(dt_aware)
 
@@ -180,7 +179,6 @@ async def _build_calendar_response(
     )
 
     interactions = []
-    narasi = None
 
     if chart_id:
         stmt = select(BaZiChart).where(BaZiChart.id == chart_id)
@@ -198,16 +196,11 @@ async def _build_calendar_response(
             }
             interactions = detect_calendar_interactions(user_dict, cal)
 
-            if with_narasi:
-                chart_dict = _build_chart_dict(user_db_chart)
-                narasi = await generate_calendar_narasi(chart_dict, cal, interactions)
-
     date_str = dt_aware.strftime("%Y-%m-%d")
     return CalendarResponse(
         current_pillars=pillars,
         interactions=interactions,
         date_str=date_str,
-        narasi=narasi,
     )
 
 

@@ -203,6 +203,24 @@ async def _build_calendar_response(
         date_str=date_str,
     )
 
+def _interaction_to_dict(interaction) -> dict:
+    if isinstance(interaction, dict):
+        return {
+            "type": interaction.get("type"),
+            "user_branch": interaction.get("user_branch"),
+            "calendar_branch": interaction.get("calendar_branch"),
+            "description": interaction.get("description"),
+            "element": interaction.get("element"),
+        }
+
+    return {
+        "type": getattr(interaction, "type", None),
+        "user_branch": getattr(interaction, "user_branch", None),
+        "calendar_branch": getattr(interaction, "calendar_branch", None),
+        "description": getattr(interaction, "description", None),
+        "element": getattr(interaction, "element", None),
+    }
+
 
 @router.post("/calendar/narasi")
 async def get_calendar_narasi(req: CalendarNarasiRequest, db: AsyncSession = Depends(get_db)):
@@ -234,10 +252,7 @@ async def get_calendar_narasi(req: CalendarNarasiRequest, db: AsyncSession = Dep
         }
     }
     interactions_raw = detect_calendar_interactions(user_dict, cal)
-    interactions_list = [
-        {"type": i.type, "user_branch": i.user_branch, "calendar_branch": i.calendar_branch, "description": i.description}
-        for i in interactions_raw
-    ]
+    interactions_list = [_interaction_to_dict(interaction) for interaction in interactions_raw]
 
     calendar_pillars = {
         "year":  {"stem": cal["pillars"]["year"]["stem"],  "branch": cal["pillars"]["year"]["branch"]},

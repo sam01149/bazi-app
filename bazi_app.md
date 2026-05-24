@@ -235,6 +235,7 @@ git push hf master:main
 - Feat: CalendarScreen — "Hubungan dengan Chartmu" kini dilengkapi narasi AI (POST `/calendar/narasi`); auto-fetch saat ganti tanggal, reset otomatis, retry button jika error; tidak di-cache DB
 - Fix: WishScreen — keinginan hilang saat refresh karena `ctxLoading` belum dicek; sekarang nunggu context selesai load sebelum fetch/render
 - Fix: cascade AI di `services/cerebras.py` — semua error provider selain 400/422 sekarang lanjut ke model berikutnya, jadi SambaNova auth/model error tetap fallback ke Cerebras
+- Fix: `/api/calendar/narasi` — `interactions` sekarang dinormalisasi dari dict/object supaya endpoint tidak 500 saat `detect_calendar_interactions` mengembalikan dict
 
 ### Belum Ada / Known Issues ⚠️
 - **Tidak ada unit tests** — engine calculation belum ditest

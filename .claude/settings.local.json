@@ -7,7 +7,13 @@
       "Bash(Format-Table -AutoSize)",
       "Bash(git add *)",
       "Bash(git commit *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(git submodule *)",
+      "Bash(ls hf-deploy/)",
+      "Bash(Get-ChildItem \"c:\\\\Users\\\\sam\\\\Documents\\\\kerja\\\\Self app\\\\hf-deploy\" -Recurse -Depth 3)",
+      "Bash(Select-Object FullName)",
+      "Bash(FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch --index-filter 'git rm --cached --ignore-unmatch backend/.env' HEAD~2..HEAD)",
+      "Bash(git stash *)"
     ]
   }
 }

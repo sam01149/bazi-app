@@ -8,6 +8,17 @@ import { API_URL } from '../config';
 import { useChart } from '../context/ChartContext';
 import { C, STEM_COLOR, STEM_ELEMENT, BRANCH_ANIMAL, BRANCH_ELEMENT } from '../theme';
 
+function utcToLocalDateStr(utcStr: string, tz: string): string {
+  try {
+    const d = new Date(utcStr);
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(d);
+  } catch {
+    return utcStr.split('T')[0];
+  }
+}
+
 const DAYS_ID = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
 const MONTHS_ID = [
   'Januari','Februari','Maret','April','Mei','Juni',
@@ -24,6 +35,7 @@ const INTERACTION_META: Record<string, { label: string; color: string; icon: str
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const CELL_W = Math.floor((SCREEN_W - 32) / 7);
+const CELL_H = 52;
 
 function buildCalendarDays(year: number, month: number): (number | null)[] {
   const firstDay = new Date(year, month, 1).getDay();
@@ -66,8 +78,26 @@ export default function CalendarScreen() {
 
   const [calNarasi,        setCalNarasi]        = useState('');
   const [calNarasiLoading, setCalNarasiLoading] = useState(false);
-  // Track which date narasi was last requested for, to discard stale responses
   const narasi_dateRef = useRef<string>('');
+
+  const [solarTermsMap, setSolarTermsMap] = useState<Record<string, string>>({});
+  const fetchedYearsRef = useRef<Set<number>>(new Set());
+
+  const fetchSolarTerms = useCallback(async (year: number) => {
+    if (fetchedYearsRef.current.has(year)) return;
+    fetchedYearsRef.current.add(year);
+    try {
+      const res = await axios.get(`${API_URL}/solar-terms/year/${year}`);
+      const tz = timezone || 'Asia/Jakarta';
+      const map: Record<string, string> = {};
+      for (const item of res.data) {
+        map[utcToLocalDateStr(item.datetime_utc, tz)] = item.name;
+      }
+      setSolarTermsMap(prev => ({ ...prev, ...map }));
+    } catch {
+      // solar terms are decorative; fail silently
+    }
+  }, [timezone]);
 
   const loadCalNarasi = useCallback(async (dateStr: string) => {
     if (!chartId) return;
@@ -124,6 +154,12 @@ export default function CalendarScreen() {
     if (!ctxLoading) loadDayData(todayStr);
   }, [ctxLoading, loadDayData]);
 
+  useEffect(() => {
+    fetchSolarTerms(viewYear);
+    if (viewMonth === 0)  fetchSolarTerms(viewYear - 1);
+    if (viewMonth === 11) fetchSolarTerms(viewYear + 1);
+  }, [viewYear, viewMonth, fetchSolarTerms]);
+
   const handleDayPress = (day: number) => {
     const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     setSelectedDate(dateStr);
@@ -169,11 +205,12 @@ export default function CalendarScreen() {
       {/* ── Calendar grid ── */}
       <View style={styles.grid}>
         {cells.map((day, idx) => {
-          if (!day) return <View key={idx} style={{ width: CELL_W, height: 40 }} />;
+          if (!day) return <View key={idx} style={{ width: CELL_W, height: CELL_H }} />;
           const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-          const isToday    = dateStr === todayStr;
-          const isSelected = dateStr === selectedDate;
-          const isSunday   = idx % 7 === 0;
+          const isToday      = dateStr === todayStr;
+          const isSelected   = dateStr === selectedDate;
+          const isSunday     = idx % 7 === 0;
+          const solarTerm    = solarTermsMap[dateStr];
           return (
             <TouchableOpacity
               key={idx}
@@ -187,12 +224,22 @@ export default function CalendarScreen() {
             >
               <Text style={[
                 styles.dayNum,
-                isSunday && { color: C.red },
-                isToday  && { color: C.bg, fontWeight: '900' },
+                isSunday   && { color: C.red },
+                isToday    && { color: C.bg, fontWeight: '900' },
                 isSelected && !isToday && { color: C.goldSoft },
               ]}>
                 {day}
               </Text>
+              {solarTerm ? (
+                <Text style={[
+                  styles.solarTermLabel,
+                  isToday && { color: C.bg },
+                ]}>
+                  {solarTerm}
+                </Text>
+              ) : (
+                <View style={styles.solarTermPlaceholder} />
+              )}
             </TouchableOpacity>
           );
         })}
@@ -200,7 +247,14 @@ export default function CalendarScreen() {
 
       {/* ── Selected date detail ── */}
       <View style={styles.detailSection}>
-        <Text style={styles.selectedDateLabel}>{formatDateLong(selectedDate)}</Text>
+        <View style={styles.selectedDateRow}>
+          <Text style={styles.selectedDateLabel}>{formatDateLong(selectedDate)}</Text>
+          {solarTermsMap[selectedDate] && (
+            <View style={styles.solarTermBadge}>
+              <Text style={styles.solarTermBadgeText}>{solarTermsMap[selectedDate]}</Text>
+            </View>
+          )}
+        </View>
 
         {dayLoading ? (
           <View style={styles.loadingRow}>
@@ -330,26 +384,55 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 20 },
   dayCell: {
     width: CELL_W,
-    height: 40,
+    height: CELL_H,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 10,
+    paddingVertical: 4,
   },
   dayCellToday:    { backgroundColor: C.gold },
   dayCellSelected: { backgroundColor: C.surfaceHigh },
   dayNum: { fontSize: 14, color: C.text, fontWeight: '500' },
+  solarTermLabel: {
+    fontSize: 9,
+    color: C.gold,
+    fontWeight: '700',
+    lineHeight: 12,
+    marginTop: 1,
+  },
+  solarTermPlaceholder: { height: 13 },
 
   detailSection: {
     borderTopWidth: 1,
     borderTopColor: C.border,
     paddingTop: 20,
   },
+  selectedDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 16,
+    flexWrap: 'wrap',
+  },
   selectedDateLabel: {
     fontSize: 17,
     fontWeight: '800',
     color: C.text,
-    marginBottom: 16,
     letterSpacing: 0.2,
+  },
+  solarTermBadge: {
+    backgroundColor: C.surfaceHigh,
+    borderWidth: 1,
+    borderColor: C.gold,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  solarTermBadgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: C.gold,
+    letterSpacing: 0.5,
   },
 
   loadingRow:  { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 20 },

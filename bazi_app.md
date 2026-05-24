@@ -238,6 +238,7 @@ git push hf master:main
 - Fix: `/api/calendar/narasi` — `interactions` sekarang dinormalisasi dari dict/object supaya endpoint tidak 500 saat `detect_calendar_interactions` mengembalikan dict
 - Update: prompt AI utama ditulis ulang menjadi mode struktural, strategis, dan dinamika waktu yang lebih klinis/taktis
 - Update: prompt AI sekarang dipisah jadi 3 blok utama plus template payload yang konsisten di [bazi_prompt.md](bazi_prompt.md)
+- Update: prompt AI disederhanakan lagi agar istilah teknis lebih mudah dipahami dan dijelaskan singkat jika dipakai
 
 ### Belum Ada / Known Issues ⚠️
 - **Tidak ada unit tests** — engine calculation belum ditest

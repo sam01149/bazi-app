@@ -7,6 +7,47 @@ import axios from 'axios';
 import { API_URL } from '../config';
 import { useChart } from '../context/ChartContext';
 import { C, STEM_COLOR, STEM_ELEMENT, BRANCH_ANIMAL } from '../theme';
+import InfoModal from '../components/InfoModal';
+
+type TermKey = 'day_master' | 'empat_pilar' | 'ge_ju' | 'yong_shen' | 'stem_combo' | 'luck_pillars' | 'kong_wang';
+
+const TERM_EXPLANATIONS: Record<TermKey, { title: string; subtitle: string; body: string }> = {
+  day_master: {
+    title: 'Day Master (日主)',
+    subtitle: 'Inti dari chart BaZi-mu',
+    body: 'Day Master adalah elemen hari kelahiranmu — inti kepribadian, energi dasar, dan cara kamu berinteraksi dengan dunia. Semua elemen lain dalam chart dibaca relatif terhadap Day Master ini.\n\nContoh: Day Master 甲 (Kayu Yang) cenderung visioner, ambisius, dan suka tumbuh — seperti pohon besar yang terus berkembang.',
+  },
+  empat_pilar: {
+    title: 'Empat Pilar (四柱)',
+    subtitle: 'Peta energi kelahiranmu',
+    body: 'BaZi berarti "Delapan Karakter" — empat pilar (tahun, bulan, hari, jam) masing-masing terdiri dari dua karakter: Heavenly Stem (天干) di atas dan Earthly Branch (地支) di bawah.\n\nPilar Tahun: energi keluarga dan leluhur.\nPilar Bulan: energi karier dan lingkungan tumbuh.\nPilar Hari: inti diri (Day Master) dan hubungan intim.\nPilar Jam: ambisi, anak, dan warisan.',
+  },
+  ge_ju: {
+    title: 'Ge Ju (格局)',
+    subtitle: 'Struktur dominan chartmu',
+    body: 'Ge Ju adalah "pola" atau struktur utama chart BaZi-mu, ditentukan dari hidden stem terkuat di Pilar Bulan. Ini seperti "DNA strategis" — menggambarkan jenis energi apa yang paling dominan menggerakkan hidupmu.\n\nContoh: 正官格 (Official Structure) → orang yang bergerak lewat jalur formal, otoritas, dan reputasi.',
+  },
+  yong_shen: {
+    title: 'Yong Shen (用神)',
+    subtitle: 'Elemen yang paling kamu butuhkan',
+    body: 'Yong Shen adalah "Useful God" — elemen atau Ten God yang paling dibutuhkan chartmu untuk seimbang. Jika Day Master terlalu kuat, ia butuh elemen yang "mengeluarkan" atau "mengontrol" energinya. Jika terlalu lemah, ia butuh dukungan.\n\nSederhananya: Yong Shen adalah arah di mana energimu paling efektif mengalir.',
+  },
+  stem_combo: {
+    title: 'Stem Combinations (天干合)',
+    subtitle: '5 pasangan kombinasi Heavenly Stem',
+    body: 'Dalam BaZi, ada 5 pasangan Heavenly Stem yang ketika bertemu, "bergabung" dan menghasilkan elemen baru:\n\n甲+己 → Tanah  |  乙+庚 → Logam\n丙+辛 → Air    |  丁+壬 → Kayu\n戊+癸 → Api\n\nKombinasi ini bisa memperkuat atau mengubah dinamika chart — terutama jika melibatkan Day Master.',
+  },
+  luck_pillars: {
+    title: 'Luck Pillars (大運)',
+    subtitle: 'Siklus energi 10-tahunan',
+    body: 'Luck Pillars adalah siklus energi yang berubah setiap 10 tahun sepanjang hidupmu. Masing-masing pillar membawa tema, peluang, dan tantangan yang berbeda.\n\nPillar yang aktif sekarang adalah "cuaca" dekade ini — menentukan elemen apa yang mendukung atau menekanmu saat ini. Bacalah chart natal dalam konteks pillar aktif untuk pemahaman yang lebih akurat.',
+  },
+  kong_wang: {
+    title: 'Kong Wang / Void Branches (空亡)',
+    subtitle: 'Branch yang kehilangan efektivitas',
+    body: 'Dalam setiap siklus 旬 (10 hari), ada 2 Earthly Branch yang "kosong" atau tidak aktif — disebut Kong Wang (空亡) atau Void.\n\nBranch yang masuk dalam void cenderung kehilangan efektivitasnya: Ten God yang ada di branch itu menjadi kurang kuat bekerja. Bukan berarti buruk — hanya menunjukkan area di mana energi tersebut tidak bekerja maksimal.',
+  },
+};
 
 const TIMEZONES = [
   { label: 'WIB',  sub: 'Jakarta · Sumatera',  value: 'Asia/Jakarta'  },
@@ -92,6 +133,13 @@ export default function ProfileScreen() {
   const [activeSection,  setActiveSection]  = useState('');
   const [narasiLoading,  setNarasiLoading]  = useState(false);
   const [narasi,         setNarasi]         = useState('');
+  const [infoTopic,      setInfoTopic]      = useState<TermKey | ''>('');
+
+  const info = (key: TermKey) => (
+    <TouchableOpacity onPress={() => setInfoTopic(key)} style={styles.infoBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+      <Text style={styles.infoBtnText}>ⓘ</Text>
+    </TouchableOpacity>
+  );
 
   const loadProfile = useCallback(async (id: string) => {
     setProfileLoading(true);
@@ -337,7 +385,10 @@ export default function ProfileScreen() {
                 <Text style={[styles.dayMasterChar, { color: stemCol }]}>{dayStem}</Text>
                 <View style={styles.dayMasterInfo}>
                   <Text style={styles.dayMasterEl}>{stemEl}</Text>
-                  <Text style={styles.dayMasterLabel}>Day Master</Text>
+                  <View style={styles.dayMasterLabelRow}>
+                    <Text style={styles.dayMasterLabel}>Day Master</Text>
+                    {info('day_master')}
+                  </View>
                   <View style={styles.dayMasterBadges}>
                     <View style={[styles.strengthBadge, { borderColor: stemCol }]}>
                       <Text style={[styles.strengthText, { color: stemCol }]}>
@@ -345,16 +396,20 @@ export default function ProfileScreen() {
                       </Text>
                     </View>
                     {geJu && (
-                      <View style={styles.geJuBadge}>
-                        <Text style={styles.geJuText}>{geJu}</Text>
-                      </View>
+                      <TouchableOpacity onPress={() => setInfoTopic('ge_ju')} activeOpacity={0.75}>
+                        <View style={styles.geJuBadge}>
+                          <Text style={styles.geJuText}>{geJu} ⓘ</Text>
+                        </View>
+                      </TouchableOpacity>
                     )}
                   </View>
                   {yongShen && (
-                    <Text style={styles.yongShenRow}>
-                      <Text style={styles.yongShenLabel}>用神 </Text>
-                      <Text style={styles.yongShenValue}>{yongShen}</Text>
-                    </Text>
+                    <TouchableOpacity onPress={() => setInfoTopic('yong_shen')} activeOpacity={0.75}>
+                      <Text style={styles.yongShenRow}>
+                        <Text style={styles.yongShenLabel}>用神 </Text>
+                        <Text style={styles.yongShenValue}>{yongShen} ⓘ</Text>
+                      </Text>
+                    </TouchableOpacity>
                   )}
                 </View>
               </View>
@@ -362,7 +417,10 @@ export default function ProfileScreen() {
           })()}
 
           {/* Four Pillars */}
-          <Text style={styles.sectionLabel}>EMPAT PILAR</Text>
+          <View style={styles.sectionLabelRow}>
+            <Text style={styles.sectionLabel}>EMPAT PILAR</Text>
+            {info('empat_pilar')}
+          </View>
           <View style={styles.pillarsContainer}>
             {(['year', 'month', 'day', 'hour'] as const).map(p => {
               const pillar  = chartData.pillars?.[p];
@@ -404,7 +462,10 @@ export default function ProfileScreen() {
           {/* Stem Combinations */}
           {stemCombos.length > 0 && (
             <>
-              <Text style={styles.sectionLabel}>天干合 STEM COMBINATIONS</Text>
+              <View style={styles.sectionLabelRow}>
+                <Text style={styles.sectionLabel}>天干合 STEM COMBINATIONS</Text>
+                {info('stem_combo')}
+              </View>
               <View style={styles.comboCard}>
                 {stemCombos.map((c, idx) => (
                   <View key={idx} style={styles.comboRow}>
@@ -425,7 +486,10 @@ export default function ProfileScreen() {
           {/* Luck Pillars */}
           {luckPillars.length > 0 && (
             <>
-              <Text style={styles.sectionLabel}>大運 LUCK PILLARS</Text>
+              <View style={styles.sectionLabelRow}>
+                <Text style={styles.sectionLabel}>大運 LUCK PILLARS</Text>
+                {info('luck_pillars')}
+              </View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.lpScroll} contentContainerStyle={styles.lpScrollContent}>
                 {luckPillars.map((lp: any, idx: number) => {
                   const isActive = activeLp?.order_index === lp.order_index;
@@ -447,7 +511,10 @@ export default function ProfileScreen() {
           {/* Void Branches info */}
           {voidBranches.length > 0 && (
             <>
-              <Text style={styles.sectionLabel}>空亡 VOID BRANCHES</Text>
+              <View style={styles.sectionLabelRow}>
+                <Text style={styles.sectionLabel}>空亡 VOID BRANCHES</Text>
+                {info('kong_wang')}
+              </View>
               <View style={styles.voidCard}>
                 <View style={styles.voidBranchRow}>
                   {voidBranches.map(b => (
@@ -536,6 +603,17 @@ export default function ProfileScreen() {
         <View style={styles.center}>
           <Text style={styles.errorText}>Gagal memuat profil. Cek koneksi backend.</Text>
         </View>
+      )}
+
+      {/* ── Term explanation modal ── */}
+      {infoTopic !== '' && TERM_EXPLANATIONS[infoTopic] && (
+        <InfoModal
+          visible={infoTopic !== ''}
+          title={TERM_EXPLANATIONS[infoTopic].title}
+          subtitle={TERM_EXPLANATIONS[infoTopic].subtitle}
+          body={TERM_EXPLANATIONS[infoTopic].body}
+          onClose={() => setInfoTopic('')}
+        />
       )}
     </ScrollView>
   );
@@ -640,8 +718,29 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: C.textFaint,
     letterSpacing: 1.5,
-    marginBottom: 10,
     marginTop: 4,
+  },
+  sectionLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 10,
+  },
+  infoBtn: {
+    width: 22,
+    height: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  infoBtnText: {
+    fontSize: 14,
+    color: C.textFaint,
+    lineHeight: 18,
+  },
+  dayMasterLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
 
   pillarsContainer: {

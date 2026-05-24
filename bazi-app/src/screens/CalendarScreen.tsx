@@ -7,6 +7,7 @@ import axios from 'axios';
 import { API_URL } from '../config';
 import { useChart } from '../context/ChartContext';
 import { C, STEM_COLOR, STEM_ELEMENT, BRANCH_ANIMAL, BRANCH_ELEMENT } from '../theme';
+import InfoModal from '../components/InfoModal';
 
 function utcToLocalDateStr(utcStr: string, tz: string): string {
   try {
@@ -32,6 +33,68 @@ const INTERACTION_META: Record<string, { label: string; color: string; icon: str
   penalty:         { label: 'Hukuman',      color: C.red,   icon: '△' },
   self_penalty:    { label: 'Hukuman Diri', color: C.amber, icon: '△' },
 };
+
+const INTERACTION_PLAIN: Record<string, string> = {
+  clash:           'Hindari konfrontasi langsung dan keputusan impulsif hari ini.',
+  six_combination: 'Energi mendukung kerjasama — bagus untuk kolaborasi dan memulai hal baru.',
+  harm:            'Waspadai dinamika tersembunyi di sekitarmu — jaga komunikasi tetap jelas.',
+  penalty:         'Ada tekanan dari situasi di luar kendali — bersabar dan tidak terburu-buru.',
+  self_penalty:    'Energi internalmu sedang tidak stabil — jaga keseimbangan dan istirahat cukup.',
+};
+
+type SolarTermInfo = { pinyin: string; season: string; desc: string };
+const SOLAR_TERM_INFO: Record<string, SolarTermInfo> = {
+  '小寒': { pinyin: 'Xiǎohán',    season: 'Musim Dingin', desc: 'Awal fase dingin yang dalam. Energi alam menyimpan ke dalam — saat yang baik untuk introspeksi dan perencanaan diam-diam.' },
+  '大寒': { pinyin: 'Dàhán',      season: 'Musim Dingin', desc: 'Puncak musim dingin. Energi berada di titik terdalam — simpan tenaga, bersiap menyambut siklus baru yang akan segera datang.' },
+  '立春': { pinyin: 'Lìchūn',     season: 'Musim Semi',   desc: 'Titik awal tahun BaZi. Energi mulai bergerak dan tumbuh — momen terbaik untuk memulai rencana dan langkah baru dalam hidup.' },
+  '雨水': { pinyin: 'Yǔshuǐ',     season: 'Musim Semi',   desc: 'Hujan pertama menyuburkan bumi. Ide dan rencana yang disemai sekarang akan mendapat dukungan energi untuk tumbuh.' },
+  '驚蟄': { pinyin: 'Jīngzhé',    season: 'Musim Semi',   desc: 'Alam bangkit dari tidur panjang. Energi menjadi aktif dan bergerak — saatnya keluar dari zona nyaman dan ambil inisiatif.' },
+  '春分': { pinyin: 'Chūnfēn',    season: 'Musim Semi',   desc: 'Siang dan malam seimbang sempurna. Hari harmoni — cocok untuk menjembatani perbedaan, menyeimbangkan prioritas, dan mencari titik tengah.' },
+  '清明': { pinyin: 'Qīngmíng',   season: 'Musim Semi',   desc: 'Langit cerah dan udara bersih. Energi jernih dan fokus — waktu yang baik untuk merenung, menghormati akar, dan membuat keputusan dengan kepala dingin.' },
+  '穀雨': { pinyin: 'Gǔyǔ',       season: 'Musim Semi',   desc: 'Hujan menyuburkan ladang. Energi produktif tinggi — kerja keras sekarang akan menuai hasil yang nyata.' },
+  '立夏': { pinyin: 'Lìxià',      season: 'Musim Panas',  desc: 'Awal musim panas — energi Yang mulai dominan. Aktivitas, ekspansi, dan pertumbuhan semua mendapat dorongan.' },
+  '小滿': { pinyin: 'Xiǎomǎn',    season: 'Musim Panas',  desc: 'Hampir matang tapi belum sepenuhnya. Saatnya tekun dan konsisten — jangan berhenti di tengah jalan.' },
+  '芒種': { pinyin: 'Mángzhòng',  season: 'Musim Panas',  desc: 'Masa panen dan tanam sekaligus. Energi paling produktif — selesaikan yang sudah dimulai, dan mulai yang baru dengan cepat.' },
+  '夏至': { pinyin: 'Xiàzhì',     season: 'Musim Panas',  desc: 'Hari terpanjang — puncak energi Yang. Titik klimaks aktivitas tahunan. Manfaatkan momentum ini sebelum energi mulai menyimpan kembali.' },
+  '小暑': { pinyin: 'Xiǎoshǔ',    season: 'Musim Panas',  desc: 'Panas mulai terasa. Energi tinggi tapi perlu dijaga — jangan bakar semua energi sekaligus, jaga stamina untuk jangka panjang.' },
+  '大暑': { pinyin: 'Dàshǔ',      season: 'Musim Panas',  desc: 'Puncak panas sepanjang tahun. Energi maksimal — manfaatkan tapi tetap jaga keseimbangan agar tidak terbakar.' },
+  '立秋': { pinyin: 'Lìqiū',      season: 'Musim Gugur',  desc: 'Awal musim gugur — alam mulai menyimpan. Waktunya evaluasi, konsolidasi, dan memangkas hal-hal yang tidak perlu.' },
+  '處暑': { pinyin: 'Chǔshǔ',     season: 'Musim Gugur',  desc: 'Panas mereda, transisi terjadi. Selesaikan pekerjaan yang belum tuntas sebelum energi benar-benar berpindah musim.' },
+  '白露': { pinyin: 'Báilù',      season: 'Musim Gugur',  desc: 'Embun pagi pertama — udara menjadi jernih. Energi bersih dan fokus, tepat untuk pekerjaan yang membutuhkan ketelitian dan ketenangan.' },
+  '秋分': { pinyin: 'Qiūfēn',     season: 'Musim Gugur',  desc: 'Keseimbangan siang-malam untuk kedua kalinya. Momen untuk menyeimbangkan kembali semua aspek kehidupan — karier, hubungan, kesehatan.' },
+  '寒露': { pinyin: 'Hánlù',      season: 'Musim Gugur',  desc: 'Udara mulai dingin, energi menyimpan ke dalam. Saatnya fokus, kurangi kegiatan luar, dan perkuat pondasi dari dalam.' },
+  '霜降': { pinyin: 'Shuāngjiàng',season: 'Musim Gugur',  desc: 'Embun beku pertama. Selesaikan semua proyek penting sebelum musim dingin tiba — waktu terus berjalan.' },
+  '立冬': { pinyin: 'Lìdōng',     season: 'Musim Dingin', desc: 'Awal musim dingin — energi sepenuhnya menyimpan. Cocok untuk perencanaan jangka panjang, belajar, dan memperkuat strategi.' },
+  '小雪': { pinyin: 'Xiǎoxuě',    season: 'Musim Dingin', desc: 'Salju ringan pertama. Keheningan dan ketenangan mendominasi — gunakan untuk refleksi mendalam dan mempersiapkan diri.' },
+  '大雪': { pinyin: 'Dàxuě',      season: 'Musim Dingin', desc: 'Salju lebat. Energi paling tersimpan dalam setahun — istirahat, isi ulang daya batin, dan siapkan diri untuk siklus baru.' },
+  '冬至': { pinyin: 'Dōngzhì',    season: 'Musim Dingin', desc: 'Malam terpanjang — puncak energi Yin. Titik balik penting: setelah ini energi Yang mulai tumbuh kembali. Momentum tersembunyi yang kuat.' },
+};
+
+type EnergyStatus = { level: 'neutral' | 'good' | 'caution' | 'challenging'; label: string; color: string; summary: string };
+
+function getEnergyStatus(interactions: any[]): EnergyStatus {
+  const types = interactions.map((i: any) => i.type as string);
+  const hasClashOrPenalty = types.some(t => t === 'clash' || t === 'penalty' || t === 'self_penalty');
+  const hasHarm           = types.some(t => t === 'harm');
+  const hasCombination    = types.some(t => t === 'six_combination');
+
+  if (hasClashOrPenalty) return {
+    level: 'challenging', color: C.red, label: 'Hari Penuh Tekanan',
+    summary: 'Ada gesekan energi hari ini. Hindari keputusan besar, jaga emosi tetap stabil.',
+  };
+  if (hasHarm) return {
+    level: 'caution', color: C.amber, label: 'Perlu Waspada',
+    summary: 'Ada hambatan tersembunyi hari ini. Waspada terhadap dinamika di sekitarmu.',
+  };
+  if (hasCombination) return {
+    level: 'good', color: C.teal, label: 'Energi Mengalir',
+    summary: 'Energi harmonis dan mendukung hari ini. Manfaatkan untuk kerjasama dan langkah maju.',
+  };
+  return {
+    level: 'neutral', color: C.textMuted, label: 'Energi Stabil',
+    summary: 'Tidak ada interaksi khusus hari ini. Energi berjalan stabil — cocok untuk rutinitas.',
+  };
+}
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const CELL_W = Math.floor((SCREEN_W - 32) / 7);
@@ -83,6 +146,8 @@ export default function CalendarScreen() {
   const [solarTermsMap, setSolarTermsMap] = useState<Record<string, string>>({});
   const fetchedYearsRef = useRef<Set<number>>(new Set());
 
+  const [solarTermModal, setSolarTermModal] = useState<(SolarTermInfo & { name: string }) | null>(null);
+
   const fetchSolarTerms = useCallback(async (year: number) => {
     if (fetchedYearsRef.current.has(year)) return;
     fetchedYearsRef.current.add(year);
@@ -110,7 +175,6 @@ export default function CalendarScreen() {
         date_str: dateStr,
         timezone,
       });
-      // Only update if user is still on the same date
       if (narasi_dateRef.current === dateStr) {
         setCalNarasi(res.data.narasi);
       }
@@ -141,7 +205,6 @@ export default function CalendarScreen() {
         : `${API_URL}/calendar/date/${dateStr}?timezone=${tz}${cid}`;
       const res = await axios.get(url);
       setDayData(res.data);
-      // Fetch AI narasi in parallel (doesn't block main data display)
       if (chartId) loadCalNarasi(dateStr);
     } catch {
       setDayError('Gagal memuat data. Pastikan backend berjalan.');
@@ -175,8 +238,14 @@ export default function CalendarScreen() {
     else setViewMonth(m => m + 1);
   };
 
+  const openSolarTermModal = (name: string) => {
+    const info = SOLAR_TERM_INFO[name];
+    if (info) setSolarTermModal({ name, ...info });
+  };
+
   const cells = buildCalendarDays(viewYear, viewMonth);
   const interactions: any[] = dayData?.interactions ?? [];
+  const energy = chartId && dayData ? getEnergyStatus(interactions) : null;
 
   return (
     <ScrollView
@@ -206,11 +275,11 @@ export default function CalendarScreen() {
       <View style={styles.grid}>
         {cells.map((day, idx) => {
           if (!day) return <View key={idx} style={{ width: CELL_W, height: CELL_H }} />;
-          const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-          const isToday      = dateStr === todayStr;
-          const isSelected   = dateStr === selectedDate;
-          const isSunday     = idx % 7 === 0;
-          const solarTerm    = solarTermsMap[dateStr];
+          const dateStr   = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+          const isToday   = dateStr === todayStr;
+          const isSelected = dateStr === selectedDate;
+          const isSunday  = idx % 7 === 0;
+          const solarTerm = solarTermsMap[dateStr];
           return (
             <TouchableOpacity
               key={idx}
@@ -231,10 +300,7 @@ export default function CalendarScreen() {
                 {day}
               </Text>
               {solarTerm ? (
-                <Text style={[
-                  styles.solarTermLabel,
-                  isToday && { color: C.bg },
-                ]}>
+                <Text style={[styles.solarTermLabel, isToday && { color: C.bg }]}>
                   {solarTerm}
                 </Text>
               ) : (
@@ -250,11 +316,26 @@ export default function CalendarScreen() {
         <View style={styles.selectedDateRow}>
           <Text style={styles.selectedDateLabel}>{formatDateLong(selectedDate)}</Text>
           {solarTermsMap[selectedDate] && (
-            <View style={styles.solarTermBadge}>
-              <Text style={styles.solarTermBadgeText}>{solarTermsMap[selectedDate]}</Text>
-            </View>
+            <TouchableOpacity
+              style={styles.solarTermBadge}
+              onPress={() => openSolarTermModal(solarTermsMap[selectedDate])}
+              activeOpacity={0.75}
+            >
+              <Text style={styles.solarTermBadgeText}>{solarTermsMap[selectedDate]} ⓘ</Text>
+            </TouchableOpacity>
           )}
         </View>
+
+        {/* ── Energy indicator ── */}
+        {energy && (
+          <View style={[styles.energyCard, { borderLeftColor: energy.color }]}>
+            <View style={styles.energyHeader}>
+              <View style={[styles.energyDot, { backgroundColor: energy.color }]} />
+              <Text style={[styles.energyLabel, { color: energy.color }]}>{energy.label}</Text>
+            </View>
+            <Text style={styles.energySummary}>{energy.summary}</Text>
+          </View>
+        )}
 
         {dayLoading ? (
           <View style={styles.loadingRow}>
@@ -306,6 +387,7 @@ export default function CalendarScreen() {
                 ) : (
                   interactions.map((item: any, idx: number) => {
                     const meta = INTERACTION_META[item.type] ?? { label: item.type, color: C.gold, icon: '·' };
+                    const plain = INTERACTION_PLAIN[item.type];
                     return (
                       <View key={idx} style={[styles.interactCard, { borderLeftColor: meta.color }]}>
                         <View style={styles.interactHeader}>
@@ -317,6 +399,7 @@ export default function CalendarScreen() {
                           </Text>
                         </View>
                         <Text style={styles.interactDesc}>{item.description}</Text>
+                        {plain && <Text style={styles.interactPlain}>{plain}</Text>}
                       </View>
                     );
                   })
@@ -359,6 +442,17 @@ export default function CalendarScreen() {
           </>
         ) : null}
       </View>
+
+      {/* ── Solar term info modal ── */}
+      {solarTermModal && (
+        <InfoModal
+          visible={!!solarTermModal}
+          title={`${solarTermModal.name} — ${solarTermModal.pinyin}`}
+          subtitle={solarTermModal.season}
+          body={solarTermModal.desc}
+          onClose={() => setSolarTermModal(null)}
+        />
+      )}
     </ScrollView>
   );
 }
@@ -411,7 +505,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginBottom: 16,
+    marginBottom: 14,
     flexWrap: 'wrap',
   },
   selectedDateLabel: {
@@ -432,8 +526,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     color: C.gold,
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
+
+  // Energy indicator
+  energyCard: {
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderLeftWidth: 3,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
+  energyHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 5 },
+  energyDot: { width: 8, height: 8, borderRadius: 4 },
+  energyLabel: { fontSize: 13, fontWeight: '800', letterSpacing: 0.4 },
+  energySummary: { fontSize: 13, color: C.text, lineHeight: 20 },
 
   loadingRow:  { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 20 },
   loadingText: { color: C.textMuted, fontSize: 14 },
@@ -492,6 +601,16 @@ const styles = StyleSheet.create({
   },
   interactBranches: { fontSize: 13, color: C.textMuted, fontWeight: '600' },
   interactDesc:     { fontSize: 13, color: C.text, lineHeight: 20 },
+  interactPlain: {
+    fontSize: 12,
+    color: C.textMuted,
+    lineHeight: 18,
+    fontStyle: 'italic',
+    marginTop: 5,
+    paddingTop: 5,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+  },
 
   emptyCard: {
     backgroundColor: C.surface,

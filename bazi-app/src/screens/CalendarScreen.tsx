@@ -42,6 +42,13 @@ const INTERACTION_PLAIN: Record<string, string> = {
   self_penalty:    'Energi internalmu sedang tidak stabil — jaga keseimbangan dan istirahat cukup.',
 };
 
+const INTERACTION_ANTIDOTE: Record<string, string> = {
+  clash:       'Gunakan hari ini untuk: Mengakhiri kebiasaan buruk, membersihkan hal yang sudah usang, atau membuat perubahan yang sudah lama ditunda. Hindari: Menikah, tanda tangan kontrak, atau memulai usaha baru.',
+  harm:        'Gunakan hari ini untuk: Komunikasi satu-satu yang tenang dan langsung. Hindari: Bergosip, mengambil keputusan berdasarkan informasi pihak ketiga.',
+  penalty:     'Gunakan hari ini untuk: Menyelesaikan tugas internal dan administratif. Hindari: Konfrontasi publik dan presentasi penting.',
+  self_penalty:'Gunakan hari ini untuk: Istirahat, refleksi, meditasi, atau kegiatan kreatif solo. Hindari: Overpromise dan multitasking berat.',
+};
+
 type SolarTermInfo = { pinyin: string; season: string; desc: string };
 const SOLAR_TERM_INFO: Record<string, SolarTermInfo> = {
   '小寒': { pinyin: 'Xiǎohán',    season: 'Musim Dingin', desc: 'Awal fase dingin yang dalam. Energi alam menyimpan ke dalam — saat yang baik untuk introspeksi dan perencanaan diam-diam.' },
@@ -98,7 +105,7 @@ function getEnergyStatus(interactions: any[]): EnergyStatus {
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const CELL_W = Math.floor((SCREEN_W - 32) / 7);
-const CELL_H = 52;
+const CELL_H = 56;
 
 function buildCalendarDays(year: number, month: number): (number | null)[] {
   const firstDay = new Date(year, month, 1).getDay();
@@ -127,6 +134,12 @@ const isNarasiError = (text: string): boolean => {
   );
 };
 
+interface AnnualData {
+  year_pillar: { stem: string; branch: string };
+  interactions: any[];
+  narasi: string;
+}
+
 export default function CalendarScreen() {
   const { chartId, timezone, loading: ctxLoading } = useChart();
   const today = new Date();
@@ -147,6 +160,11 @@ export default function CalendarScreen() {
   const fetchedYearsRef = useRef<Set<number>>(new Set());
 
   const [solarTermModal, setSolarTermModal] = useState<(SolarTermInfo & { name: string }) | null>(null);
+
+  // Annual section
+  const [annualExpanded, setAnnualExpanded] = useState(false);
+  const [annualCache, setAnnualCache] = useState<Record<number, AnnualData>>({});
+  const [annualLoading, setAnnualLoading] = useState(false);
 
   const fetchSolarTerms = useCallback(async (year: number) => {
     if (fetchedYearsRef.current.has(year)) return;
@@ -181,7 +199,7 @@ export default function CalendarScreen() {
     } catch (err: any) {
       if (narasi_dateRef.current === dateStr) {
         const detail = err?.response?.data?.detail;
-        setCalNarasi(detail ?? 'Gagal memuat penjelasan. Coba lagi.');
+        setCalNarasi(detail ?? 'Tidak dapat memuat penjelasan. Periksa koneksi internet.');
       }
     } finally {
       if (narasi_dateRef.current === dateStr) {
@@ -205,13 +223,30 @@ export default function CalendarScreen() {
         : `${API_URL}/calendar/date/${dateStr}?timezone=${tz}${cid}`;
       const res = await axios.get(url);
       setDayData(res.data);
-      if (chartId) loadCalNarasi(dateStr);
+      // Auto-load narasi only for today and future dates
+      if (chartId && dateStr >= todayStr) {
+        loadCalNarasi(dateStr);
+      }
     } catch {
-      setDayError('Gagal memuat data. Pastikan backend berjalan.');
+      setDayError('Data tidak dapat dimuat. Periksa koneksi internet.');
     } finally {
       setDayLoading(false);
     }
   }, [chartId, timezone, todayStr, loadCalNarasi]);
+
+  const loadAnnual = useCallback(async (year: number) => {
+    if (!chartId || annualCache[year]) return;
+    setAnnualLoading(true);
+    try {
+      const tz = encodeURIComponent(timezone || 'Asia/Jakarta');
+      const res = await axios.get(`${API_URL}/calendar/annual?year=${year}&chart_id=${chartId}&timezone=${tz}`);
+      setAnnualCache(prev => ({ ...prev, [year]: res.data }));
+    } catch {
+      // fail silently
+    } finally {
+      setAnnualLoading(false);
+    }
+  }, [chartId, timezone, annualCache]);
 
   useEffect(() => {
     if (!ctxLoading) loadDayData(todayStr);
@@ -222,6 +257,10 @@ export default function CalendarScreen() {
     if (viewMonth === 0)  fetchSolarTerms(viewYear - 1);
     if (viewMonth === 11) fetchSolarTerms(viewYear + 1);
   }, [viewYear, viewMonth, fetchSolarTerms]);
+
+  useEffect(() => {
+    if (annualExpanded && chartId) loadAnnual(viewYear);
+  }, [annualExpanded, viewYear, chartId]);
 
   const handleDayPress = (day: number) => {
     const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -238,6 +277,13 @@ export default function CalendarScreen() {
     else setViewMonth(m => m + 1);
   };
 
+  const goToToday = () => {
+    setViewYear(today.getFullYear());
+    setViewMonth(today.getMonth());
+    setSelectedDate(todayStr);
+    loadDayData(todayStr);
+  };
+
   const openSolarTermModal = (name: string) => {
     const info = SOLAR_TERM_INFO[name];
     if (info) setSolarTermModal({ name, ...info });
@@ -246,6 +292,8 @@ export default function CalendarScreen() {
   const cells = buildCalendarDays(viewYear, viewMonth);
   const interactions: any[] = dayData?.interactions ?? [];
   const energy = chartId && dayData ? getEnergyStatus(interactions) : null;
+  const isPastDate = selectedDate < todayStr;
+  const annualData = annualCache[viewYear];
 
   return (
     <ScrollView
@@ -253,15 +301,57 @@ export default function CalendarScreen() {
       contentContainerStyle={styles.container}
       showsVerticalScrollIndicator={false}
     >
+      {/* ── Annual section (collapsed by default) ── */}
+      {chartId && (
+        <TouchableOpacity
+          style={styles.annualHeader}
+          onPress={() => setAnnualExpanded(prev => !prev)}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.annualTitle}>◈ TEMA {viewYear}</Text>
+          <Text style={styles.annualChevron}>{annualExpanded ? '▲' : '▼'}</Text>
+        </TouchableOpacity>
+      )}
+      {annualExpanded && (
+        <View style={styles.annualBody}>
+          {annualLoading ? (
+            <View style={styles.annualLoadingRow}>
+              <ActivityIndicator size="small" color={C.gold} />
+              <Text style={styles.annualLoadingText}>Menganalisis tema {viewYear}…</Text>
+            </View>
+          ) : annualData ? (
+            <>
+              <View style={styles.annualPillarRow}>
+                <Text style={styles.annualPillarLabel}>Pilar Tahun {viewYear}</Text>
+                <Text style={[styles.annualPillarStem, { color: STEM_COLOR[annualData.year_pillar.stem] ?? C.gold }]}>
+                  {annualData.year_pillar.stem}
+                </Text>
+                <Text style={styles.annualPillarBranch}>{annualData.year_pillar.branch}</Text>
+              </View>
+              {annualData.narasi ? (
+                <Text style={styles.annualNarasi}>{annualData.narasi}</Text>
+              ) : null}
+            </>
+          ) : null}
+        </View>
+      )}
+
       {/* ── Month navigator ── */}
       <View style={styles.monthNav}>
         <TouchableOpacity onPress={prevMonth} style={styles.navBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
           <Text style={styles.navArrow}>‹</Text>
         </TouchableOpacity>
         <Text style={styles.monthLabel}>{MONTHS_ID[viewMonth]} {viewYear}</Text>
-        <TouchableOpacity onPress={nextMonth} style={styles.navBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Text style={styles.navArrow}>›</Text>
-        </TouchableOpacity>
+        <View style={styles.monthNavRight}>
+          {(viewYear !== today.getFullYear() || viewMonth !== today.getMonth()) && (
+            <TouchableOpacity style={styles.todayBtn} onPress={goToToday} activeOpacity={0.8}>
+              <Text style={styles.todayBtnText}>Hari Ini</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity onPress={nextMonth} style={styles.navBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+            <Text style={styles.navArrow}>›</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* ── Week-day header ── */}
@@ -388,6 +478,7 @@ export default function CalendarScreen() {
                   interactions.map((item: any, idx: number) => {
                     const meta = INTERACTION_META[item.type] ?? { label: item.type, color: C.gold, icon: '·' };
                     const plain = INTERACTION_PLAIN[item.type];
+                    const antidote = INTERACTION_ANTIDOTE[item.type];
                     return (
                       <View key={idx} style={[styles.interactCard, { borderLeftColor: meta.color }]}>
                         <View style={styles.interactHeader}>
@@ -400,6 +491,12 @@ export default function CalendarScreen() {
                         </View>
                         <Text style={styles.interactDesc}>{item.description}</Text>
                         {plain && <Text style={styles.interactPlain}>{plain}</Text>}
+                        {antidote && (
+                          <View style={styles.antidoteBox}>
+                            <Text style={styles.antidoteLabel}>✦ Cara menggunakan energi ini:</Text>
+                            <Text style={styles.antidoteText}>{antidote}</Text>
+                          </View>
+                        )}
                       </View>
                     );
                   })
@@ -428,6 +525,14 @@ export default function CalendarScreen() {
                       {calNarasi}
                     </Text>
                   </View>
+                ) : isPastDate && !calNarasiLoading ? (
+                  <TouchableOpacity
+                    style={styles.retroBtn}
+                    onPress={() => loadCalNarasi(selectedDate)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.retroBtnText}>↻ Baca Energi Hari Itu</Text>
+                  </TouchableOpacity>
                 ) : null}
               </View>
             )}
@@ -461,6 +566,38 @@ const styles = StyleSheet.create({
   root:      { flex: 1, backgroundColor: C.bg },
   container: { paddingHorizontal: 16, paddingBottom: 48, paddingTop: 8 },
 
+  // Annual section
+  annualHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: C.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+    marginBottom: 8,
+  },
+  annualTitle:   { fontSize: 12, fontWeight: '900', color: C.gold, letterSpacing: 1.2 },
+  annualChevron: { fontSize: 12, color: C.gold },
+  annualBody: {
+    backgroundColor: C.surfaceHigh,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: C.gold + '44',
+  },
+  annualLoadingRow:  { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  annualLoadingText: { color: C.textMuted, fontSize: 13 },
+  annualPillarRow:   { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
+  annualPillarLabel: { fontSize: 11, color: C.textFaint, fontWeight: '700' },
+  annualPillarStem:  { fontSize: 24, fontWeight: '900' },
+  annualPillarBranch:{ fontSize: 24, fontWeight: '900', color: C.text },
+  annualNarasi:      { fontSize: 13, color: C.text, lineHeight: 22 },
+
+  // Month navigator
   monthNav: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -471,6 +608,12 @@ const styles = StyleSheet.create({
   navBtn:   { padding: 4 },
   navArrow: { fontSize: 30, color: C.gold, lineHeight: 34 },
   monthLabel: { fontSize: 18, fontWeight: '800', color: C.text, letterSpacing: 0.3 },
+  monthNavRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  todayBtn: {
+    borderWidth: 1, borderColor: C.gold, borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 4,
+  },
+  todayBtnText: { fontSize: 12, fontWeight: '700', color: C.gold },
 
   weekRow: { flexDirection: 'row', marginBottom: 6 },
   weekLabel: { width: CELL_W, textAlign: 'center', fontSize: 11, fontWeight: '700', color: C.textMuted, paddingVertical: 2 },
@@ -488,13 +631,13 @@ const styles = StyleSheet.create({
   dayCellSelected: { backgroundColor: C.surfaceHigh },
   dayNum: { fontSize: 14, color: C.text, fontWeight: '500' },
   solarTermLabel: {
-    fontSize: 9,
+    fontSize: 10,
     color: C.gold,
     fontWeight: '700',
-    lineHeight: 12,
+    lineHeight: 13,
     marginTop: 1,
   },
-  solarTermPlaceholder: { height: 13 },
+  solarTermPlaceholder: { height: 14 },
 
   detailSection: {
     borderTopWidth: 1,
@@ -509,35 +652,18 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   selectedDateLabel: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: C.text,
-    letterSpacing: 0.2,
+    fontSize: 17, fontWeight: '800', color: C.text, letterSpacing: 0.2,
   },
   solarTermBadge: {
-    backgroundColor: C.surfaceHigh,
-    borderWidth: 1,
-    borderColor: C.gold,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    backgroundColor: C.surfaceHigh, borderWidth: 1, borderColor: C.gold,
+    borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3,
   },
-  solarTermBadgeText: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: C.gold,
-    letterSpacing: 0.3,
-  },
+  solarTermBadgeText: { fontSize: 12, fontWeight: '800', color: C.gold, letterSpacing: 0.3 },
 
   // Energy indicator
   energyCard: {
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
-    borderLeftWidth: 3,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 16,
+    backgroundColor: C.surface, borderWidth: 1, borderColor: C.border,
+    borderLeftWidth: 3, borderRadius: 12, padding: 12, marginBottom: 16,
   },
   energyHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 5 },
   energyDot: { width: 8, height: 8, borderRadius: 4 },
@@ -552,14 +678,8 @@ const styles = StyleSheet.create({
   // Pillars
   pillarsRow: { flexDirection: 'row', gap: 8, marginBottom: 20 },
   pillarCard: {
-    flex: 1,
-    backgroundColor: C.surface,
-    borderRadius: 14,
-    overflow: 'hidden',
-    alignItems: 'center',
-    paddingBottom: 12,
-    borderWidth: 1,
-    borderColor: C.border,
+    flex: 1, backgroundColor: C.surface, borderRadius: 14, overflow: 'hidden',
+    alignItems: 'center', paddingBottom: 12, borderWidth: 1, borderColor: C.border,
   },
   pillarAccent:   { width: '100%', height: 3, marginBottom: 10 },
   pillarPos:      { fontSize: 9, color: C.textFaint, marginBottom: 6, fontWeight: '700', letterSpacing: 0.5 },
@@ -573,71 +693,50 @@ const styles = StyleSheet.create({
   // Interactions
   interactSection: { marginTop: 4 },
   interactTitle: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: C.textMuted,
-    letterSpacing: 1,
-    marginBottom: 10,
-    textTransform: 'uppercase',
+    fontSize: 13, fontWeight: '800', color: C.textMuted, letterSpacing: 1,
+    marginBottom: 10, textTransform: 'uppercase',
   },
   interactCard: {
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
-    borderLeftWidth: 3,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 8,
+    backgroundColor: C.surface, borderWidth: 1, borderColor: C.border,
+    borderLeftWidth: 3, borderRadius: 12, padding: 12, marginBottom: 8,
   },
   interactHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
-  interactBadge:  {
-    fontSize: 11,
-    fontWeight: '800',
-    borderWidth: 1,
-    borderRadius: 6,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    letterSpacing: 0.5,
+  interactBadge: {
+    fontSize: 11, fontWeight: '800', borderWidth: 1, borderRadius: 6,
+    paddingHorizontal: 7, paddingVertical: 2, letterSpacing: 0.5,
   },
   interactBranches: { fontSize: 13, color: C.textMuted, fontWeight: '600' },
   interactDesc:     { fontSize: 13, color: C.text, lineHeight: 20 },
   interactPlain: {
-    fontSize: 12,
-    color: C.textMuted,
-    lineHeight: 18,
-    fontStyle: 'italic',
-    marginTop: 5,
-    paddingTop: 5,
-    borderTopWidth: 1,
-    borderTopColor: C.border,
+    fontSize: 12, color: C.textMuted, lineHeight: 18, fontStyle: 'italic',
+    marginTop: 5, paddingTop: 5, borderTopWidth: 1, borderTopColor: C.border,
   },
+  antidoteBox: {
+    marginTop: 8,
+    backgroundColor: C.teal + '15',
+    borderRadius: 8,
+    padding: 10,
+    borderLeftWidth: 2,
+    borderLeftColor: C.teal,
+  },
+  antidoteLabel: { fontSize: 10, fontWeight: '900', color: C.teal, letterSpacing: 0.5, marginBottom: 4 },
+  antidoteText:  { fontSize: 12, color: C.text, lineHeight: 19 },
 
   emptyCard: {
-    backgroundColor: C.surface,
-    borderRadius: 12,
-    padding: 20,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: C.border,
+    backgroundColor: C.surface, borderRadius: 12, padding: 20, alignItems: 'center',
+    borderWidth: 1, borderColor: C.border,
   },
   emptyText: { color: C.textMuted, textAlign: 'center', lineHeight: 22, fontSize: 14 },
 
   // AI narasi
   narasiLoadingRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    marginTop: 12, paddingLeft: 2,
+    flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, paddingLeft: 2,
   },
   narasiLoadingText: { color: C.textMuted, fontSize: 13 },
 
   narasiBox: {
-    marginTop: 12,
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
-    borderLeftWidth: 3,
-    borderLeftColor: C.gold,
-    borderRadius: 12,
-    padding: 14,
+    marginTop: 12, backgroundColor: C.surface, borderWidth: 1, borderColor: C.border,
+    borderLeftWidth: 3, borderLeftColor: C.gold, borderRadius: 12, padding: 14,
   },
   narasiBoxError:  { borderLeftColor: '#c0392b', borderColor: '#c0392b44' },
   narasiBoxHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
@@ -645,20 +744,27 @@ const styles = StyleSheet.create({
   narasiText:      { fontSize: 13, lineHeight: 22, color: C.text },
   narasiErrorText: { color: '#e07070' },
 
+  // Retro button
+  retroBtn: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: C.gold + '88',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+    backgroundColor: C.surfaceHigh,
+  },
+  retroBtnText: { fontSize: 13, fontWeight: '700', color: C.goldSoft },
+
   retryBtn: {
-    paddingHorizontal: 10, paddingVertical: 4,
-    borderRadius: 8, borderWidth: 1,
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1,
     borderColor: '#c0392b88', backgroundColor: '#c0392b22',
   },
   retryBtnText: { fontSize: 12, fontWeight: '700', color: '#e07070' },
 
   noChartCard: {
-    backgroundColor: C.surface,
-    borderRadius: 12,
-    padding: 16,
-    marginTop: 4,
-    borderWidth: 1,
-    borderColor: C.border,
+    backgroundColor: C.surface, borderRadius: 12, padding: 16, marginTop: 4,
+    borderWidth: 1, borderColor: C.border,
   },
   noChartText: { color: C.textMuted, textAlign: 'center', fontSize: 13, lineHeight: 22 },
 });

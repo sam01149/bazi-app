@@ -77,7 +77,9 @@ Self app/
 | `POST` | `/api/wishes` | Simpan keinginan baru |
 | `GET`  | `/api/wishes?chart_id=` | List semua keinginan user |
 | `DELETE` | `/api/wishes/{wish_id}` | Hapus keinginan |
+| `PATCH` | `/api/wishes/{wish_id}` | Edit konten keinginan |
 | `POST` | `/api/wishes/{wish_id}/analyze` | Analisis keinginan vs chart BaZi via AI |
+| `GET`  | `/api/calendar/annual?year=&chart_id=&timezone=` | Tema tahunan: pilar tahun + interaksi + AI narasi |
 | `GET`  | `/api/solar-terms/year/{year}` | 24 solar terms dalam satu tahun (UTC) |
 
 ### Contoh request calculate:
@@ -196,7 +198,7 @@ git push hf master:main
 
 ---
 
-## Status Saat Ini (2026-05-24 — update 7)
+## Status Saat Ini (2026-06-06 — update 8)
 
 ### Sudah Selesai ✅
 - Kalkulasi semua pilar (Year, Month, Day, Hour)
@@ -244,6 +246,26 @@ git push hf master:main
 - Refactor: `BASE_PROMPT`, `STRATEGY_TASK_PROMPT`, `TIME_TASK_PROMPT`, `_compose_system_prompt` dihapus — semua prompt sekarang standalone
 - Update: ProfileScreen — 5 tombol narasi digabung jadi 1 tombol "Analisis Lengkap"; backend narasi di-cache dengan key `full_analysis`
 - Update: logo diganti dari logo.svg ke logo.png (web + native pakai Image component React Native)
+
+- **Update 8 (2026-06-06) — UX & Fitur besar:**
+  - Feat: **P1-A Estimasi Jam** — toggle "Jam Tidak Diketahui" diganti 3-mode: Jam Pasti / Perkiraan Waktu (dropdown kultural Subuh–Isya) / Benar-Benar Tidak Tahu; `hour_unknown` disimpan di DB; badge "~" di kolom 時/JAM + pesan estimasi di profile view
+  - Feat: **P1-B Gender Missing → LP Card** — konfirmasi soft saat gender tidak diisi saat hitung chart; card placeholder "大運 tidak tersedia" jika luckPillars kosong
+  - Feat: **P1-C Kalender AI — past vs future** — auto-load narasi hanya untuk hari ini + masa depan; tanggal lampau menampilkan tombol "↻ Baca Energi Hari Itu" (retrospektif); TIME_SYSTEM_PROMPT ditambah framing retrospektif
+  - Feat: **P1-D Initial tab** — user baru tanpa chartId otomatis dinavigasi ke tab Profil saat buka app
+  - Feat: **P1-E Auto-load analisis** — setelah chart pertama dihitung, `generateNarasi('full_analysis')` dipanggil otomatis setelah delay 500ms
+  - Fix: **P1-F Error messages** — semua teks error user-facing tidak lagi menyebut "backend", diganti dengan "Periksa koneksi internet"
+  - Feat: **P2-A Timezone internasional** — 9 timezone: WIB/WITA/WIT + SGT, CST, JST, UTC, CET, EST; layout grid 3 kolom
+  - Feat: **P2-B Tombol "Hari Ini"** — muncul di nav kalender saat bukan bulan saat ini; klik reset ke hari ini
+  - Feat: **P2-C Timestamp analisis** — `analyzed_at` disimpan ke DB saat analyze wish; ditampilkan di UI + peringatan "mungkin tidak relevan" jika > 1 tahun
+  - Feat: **P2-D Auto-scroll narasi** — setelah narasi muncul di ProfileScreen, ScrollView otomatis scroll ke narasi box
+  - Feat: **P2-E Edit keinginan** — inline edit di wish card + `PATCH /wishes/{id}` endpoint baru di backend
+  - Feat: **P2-F Guided Intent chips** — 4 chip kategori (Karier, Hubungan, Keuangan, Ketenangan) mengubah placeholder TextInput; karakter counter 500
+  - Feat: **P2-G Konfirmasi analisis ulang** — tombol "Analisis Ulang" tidak langsung overwrite, tampil konfirmasi Alert dulu
+  - Feat: **P2-H Solar term font** — `solarTermLabel` naik dari 9→10px; `CELL_H` naik 52→56px
+  - Feat: **P2-I Life Strategy Snapshot Card** — parse baris `Snapshot: X | Y | Z | W` dari narasi AI; tampil sebagai kartu tersendiri di bawah Day Master hero; PROFILE_SYSTEM_PROMPT diupdate agar format Snapshot konsisten
+  - Feat: **P2-J Annual Pillar Analysis** — section "◈ TEMA 20XX" collapsible di atas kalender; GET `/calendar/annual` endpoint baru; `ANNUAL_SYSTEM_PROMPT` + `generate_annual_narasi` di cerebras.py
+  - Feat: **P2-K Privacy Blur** — toggle 👁 Tampilkan / 🙈 Sembunyikan di header WishScreen; blur konten keinginan + analisis menggunakan textShadowRadius (native) atau CSS filter (web); state tidak persisten (reset saat tab berganti)
+  - Feat: **P2-L "The Antidote"** — setiap interaction negatif (clash/harm/penalty/self_penalty) mendapat baris antidote berwarna teal di bawah deskripsi — panduan tindakan konkret menggunakan energi itu
 
 - Feat: **Ge Ju (格局) + Yong Shen (用神)** — ditentukan dari dominant hidden stem bulan; Ge Ju = struktur dominan chart; Yong Shen = useful god berdasarkan Ge Ju + DM strength; disimpan ke `bazi_charts.ge_ju` dan `bazi_charts.yong_shen`; dikirim ke semua payload AI; ditampilkan di Day Master card frontend
 - Feat: **Luck Pillars (大運)** — dihitung dari gender + jarak ke solar term terdekat ÷ 3; arah maju/mundur berdasarkan gender × polaritas tahun; disimpan ke tabel `luck_pillars`; frontend menampilkan horizontal scroll dengan highlight pillar aktif; input gender di onboarding

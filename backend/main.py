@@ -16,6 +16,8 @@ async def _run_migrations(conn):
         "ALTER TABLE bazi_charts ADD COLUMN ge_ju VARCHAR(30)",
         "ALTER TABLE bazi_charts ADD COLUMN yong_shen VARCHAR(30)",
         "ALTER TABLE ten_gods ADD COLUMN source_branch VARCHAR(5)",
+        "ALTER TABLE bazi_charts ADD COLUMN hour_unknown BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE wishes ADD COLUMN analyzed_at TIMESTAMP",
     ]
     for stmt in migrations:
         try:

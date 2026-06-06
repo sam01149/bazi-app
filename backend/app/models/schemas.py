@@ -8,6 +8,7 @@ class ChartCalculateRequest(BaseModel):
     birth_time: Optional[time] = None
     birth_timezone: str
     gender: Optional[str] = None  # 'male' or 'female'
+    hour_unknown: bool = False
 
 class NarasiGenerateRequest(BaseModel):
     chart_id: str
@@ -52,6 +53,7 @@ class ChartResponse(BaseModel):
     hidden_ten_gods: Optional[Dict[str, Any]] = None
     luck_pillars: Optional[List[LuckPillarSchema]] = None
     active_luck_pillar: Optional[LuckPillarSchema] = None
+    hour_unknown: bool = False
 
     class Config:
         from_attributes = True
@@ -78,6 +80,7 @@ class WishResponse(BaseModel):
     chart_id: str
     content: str
     analysis: Optional[str] = None
+    analyzed_at: Optional[datetime] = None
     created_at: datetime
 
     class Config:
@@ -85,6 +88,9 @@ class WishResponse(BaseModel):
 
 class WishAnalyzeRequest(BaseModel):
     chart_id: str
+
+class WishUpdateRequest(BaseModel):
+    content: str
 
 # CachedNarasi schemas
 class CachedNarasiResponse(BaseModel):

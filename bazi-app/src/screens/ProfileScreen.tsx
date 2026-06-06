@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
-  ScrollView, ActivityIndicator, Alert, Switch, Platform, Image,
+  ScrollView, ActivityIndicator, Alert, Platform, Image,
 } from 'react-native';
 import axios from 'axios';
 import { API_URL } from '../config';
@@ -50,9 +50,15 @@ const TERM_EXPLANATIONS: Record<TermKey, { title: string; subtitle: string; body
 };
 
 const TIMEZONES = [
-  { label: 'WIB',  sub: 'Jakarta · Sumatera',  value: 'Asia/Jakarta'  },
-  { label: 'WITA', sub: 'Bali · Makassar',      value: 'Asia/Makassar' },
-  { label: 'WIT',  sub: 'Jayapura · Papua',     value: 'Asia/Jayapura' },
+  { label: 'WIB',  sub: 'Jakarta · Sumatera',     value: 'Asia/Jakarta'    },
+  { label: 'WITA', sub: 'Bali · Makassar',         value: 'Asia/Makassar'   },
+  { label: 'WIT',  sub: 'Jayapura · Papua',        value: 'Asia/Jayapura'   },
+  { label: 'SGT',  sub: 'Singapura · Malaysia',    value: 'Asia/Singapore'  },
+  { label: 'CST',  sub: 'Tiongkok · Taiwan · HK',  value: 'Asia/Shanghai'   },
+  { label: 'JST',  sub: 'Jepang · Korea',          value: 'Asia/Tokyo'      },
+  { label: 'UTC',  sub: 'Universal (GMT+0)',        value: 'UTC'             },
+  { label: 'CET',  sub: 'Eropa Tengah (GMT+1/+2)', value: 'Europe/Paris'    },
+  { label: 'EST',  sub: 'Amerika Timur (GMT-5)',   value: 'America/New_York' },
 ];
 
 const GENDERS = [
@@ -67,6 +73,27 @@ const PILLAR_LABEL: Record<string, string> = {
 const NARASI_SECTIONS = [
   { key: 'full_analysis', label: 'Analisis Lengkap', icon: '◉' },
 ];
+
+const APPROX_TIMES = [
+  { label: 'Dini Hari / Tahajud', sub: '00:00–03:59', value: '02:00', pillar: '丑' },
+  { label: 'Subuh / Fajar',       sub: '04:00–05:59', value: '05:00', pillar: '卯' },
+  { label: 'Pagi / Duha',         sub: '06:00–10:59', value: '08:00', pillar: '辰' },
+  { label: 'Tengah Hari / Dzuhur',sub: '11:00–13:59', value: '12:00', pillar: '午' },
+  { label: 'Sore / Ashar',        sub: '14:00–17:59', value: '16:00', pillar: '申' },
+  { label: 'Maghrib / Senja',     sub: '18:00–19:59', value: '19:00', pillar: '戌' },
+  { label: 'Malam / Isya',        sub: '20:00–23:59', value: '21:00', pillar: '亥' },
+];
+
+type TimeMode = 'exact' | 'approximate' | 'unknown';
+
+const SNAPSHOT_LABELS = ['Sifat Inti', 'Arena Terbaik', 'Jebakan Utama', 'Langkah Jangka Panjang'];
+
+function parseSnapshot(narasi: string): string[] | null {
+  const match = narasi.match(/Snapshot:\s*(.+)/);
+  if (!match) return null;
+  const parts = match[1].split('|').map(s => s.trim());
+  return parts.length >= 4 ? parts : null;
+}
 
 const isNarasiError = (text: string): boolean => {
   if (!text || text.length < 80) return true;
@@ -124,7 +151,8 @@ export default function ProfileScreen() {
   const [time,        setTime]        = useState('');
   const [tz,          setTz]          = useState('Asia/Jakarta');
   const [gender,      setGender]      = useState<string | null>(null);
-  const [unknownHour, setUnknownHour] = useState(false);
+  const [timeMode,    setTimeMode]    = useState<TimeMode>('exact');
+  const [approxTime,  setApproxTime]  = useState<string>('');
   const [calculating, setCalculating] = useState(false);
 
   const [chartData,      setChartData]      = useState<any>(null);
@@ -134,6 +162,9 @@ export default function ProfileScreen() {
   const [narasiLoading,  setNarasiLoading]  = useState(false);
   const [narasi,         setNarasi]         = useState('');
   const [infoTopic,      setInfoTopic]      = useState<TermKey | ''>('');
+
+  const scrollRef   = useRef<ScrollView>(null);
+  const narasiBoxY  = useRef<number>(0);
 
   const info = (key: TermKey) => (
     <TouchableOpacity onPress={() => setInfoTopic(key)} style={styles.infoBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -162,38 +193,14 @@ export default function ProfileScreen() {
     if (!ctxLoading && chartId) loadProfile(chartId);
   }, [ctxLoading, chartId, loadProfile]);
 
-  const handleCalculate = async () => {
-    if (!date) {
-      Alert.alert('Tanggal Diperlukan', 'Pilih tanggal lahir terlebih dahulu.');
-      return;
-    }
-    if (!unknownHour && !time) {
-      Alert.alert('Waktu Diperlukan', 'Pilih waktu lahir atau aktifkan "Jam Tidak Diketahui".');
-      return;
-    }
-    setCalculating(true);
-    try {
-      const res = await axios.post(`${API_URL}/charts/calculate`, {
-        birth_date:     date,
-        birth_time:     unknownHour ? null : `${time}:00`,
-        birth_timezone: tz,
-        gender:         gender ?? undefined,
-      });
-      await setChart(res.data.id, tz);
-      setChartData(res.data);
-      setCachedSections({});
-    } catch {
-      Alert.alert('Gagal', `Tidak dapat menghitung chart. Pastikan backend berjalan di ${API_URL}`);
-    } finally {
-      setCalculating(false);
-    }
-  };
-
   const generateNarasi = async (section: string, forceRefresh = false) => {
     if (!chartId) return;
     setActiveSection(section);
     if (!forceRefresh && cachedSections[section]) {
       setNarasi(cachedSections[section]);
+      setTimeout(() => {
+        scrollRef.current?.scrollTo({ y: narasiBoxY.current - 20, animated: true });
+      }, 150);
       return;
     }
     setNarasiLoading(true);
@@ -205,12 +212,77 @@ export default function ProfileScreen() {
       if (!isNarasiError(text)) {
         setCachedSections(prev => ({ ...prev, [section]: text }));
       }
+      setTimeout(() => {
+        scrollRef.current?.scrollTo({ y: narasiBoxY.current - 20, animated: true });
+      }, 150);
     } catch (err: any) {
       const detail = err?.response?.data?.detail;
       setNarasi(detail ?? 'Gagal menghasilkan narasi. Silakan coba lagi.');
     } finally {
       setNarasiLoading(false);
     }
+  };
+
+  const handleCalculate = async () => {
+    if (!date) {
+      Alert.alert('Tanggal Diperlukan', 'Pilih tanggal lahir terlebih dahulu.');
+      return;
+    }
+    if (timeMode === 'exact' && !time) {
+      Alert.alert('Waktu Diperlukan', 'Pilih waktu lahir atau gunakan opsi perkiraan waktu.');
+      return;
+    }
+    if (timeMode === 'approximate' && !approxTime) {
+      Alert.alert('Perkiraan Waktu Diperlukan', 'Pilih satu perkiraan waktu kelahiran.');
+      return;
+    }
+
+    const doCalculate = async () => {
+      setCalculating(true);
+      try {
+        const finalTime = timeMode === 'exact' ? `${time}:00`
+                        : timeMode === 'approximate' ? `${approxTime}:00`
+                        : null;
+        const isHourUnknown = timeMode === 'unknown' || timeMode === 'approximate';
+
+        const res = await axios.post(`${API_URL}/charts/calculate`, {
+          birth_date:     date,
+          birth_time:     finalTime,
+          birth_timezone: tz,
+          gender:         gender ?? undefined,
+          hour_unknown:   isHourUnknown,
+        });
+        await setChart(res.data.id, tz);
+        setChartData(res.data);
+        setCachedSections({});
+        setTimeout(() => generateNarasi('full_analysis'), 500);
+      } catch {
+        Alert.alert('Gagal', 'Tidak dapat membuat chart. Periksa koneksi internet dan coba lagi.');
+      } finally {
+        setCalculating(false);
+      }
+    };
+
+    if (!gender) {
+      if (Platform.OS === 'web') {
+        const ok = window.confirm(
+          'Jenis kelamin belum dipilih.\n\nTanpa ini, Luck Pillars (大運) tidak akan dihitung. Lanjutkan tanpa Luck Pillars?'
+        );
+        if (ok) doCalculate();
+        return;
+      }
+      Alert.alert(
+        'Jenis Kelamin Belum Dipilih',
+        'Tanpa ini, Luck Pillars (大運) tidak akan dihitung. Lanjutkan tanpa Luck Pillars?',
+        [
+          { text: 'Batalkan', style: 'cancel' },
+          { text: 'Lanjutkan', onPress: doCalculate },
+        ]
+      );
+      return;
+    }
+
+    doCalculate();
   };
 
   const confirmReset = () => {
@@ -269,22 +341,30 @@ export default function ProfileScreen() {
               />
           }
 
-          <View style={styles.switchRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.fieldLabel}>Jam Tidak Diketahui</Text>
-              <Text style={styles.fieldHint}>Pakai tengah hari sebagai default</Text>
-            </View>
-            <Switch
-              value={unknownHour}
-              onValueChange={setUnknownHour}
-              trackColor={{ false: C.border, true: C.gold }}
-              thumbColor={unknownHour ? C.bg : C.textMuted}
-            />
+          <Text style={[styles.fieldLabel, { marginTop: 18 }]}>Jam Lahir</Text>
+
+          {/* Time mode selector */}
+          <View style={styles.timeModeRow}>
+            {([
+              { key: 'exact',       label: 'Jam Pasti' },
+              { key: 'approximate', label: 'Perkiraan' },
+              { key: 'unknown',     label: 'Tidak Tahu' },
+            ] as { key: TimeMode; label: string }[]).map(opt => (
+              <TouchableOpacity
+                key={opt.key}
+                style={[styles.timeModeBtn, timeMode === opt.key && styles.timeModeBtnActive]}
+                onPress={() => setTimeMode(opt.key)}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.timeModeBtnText, timeMode === opt.key && { color: C.gold }]}>
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
 
-          {!unknownHour && (
+          {timeMode === 'exact' && (
             <>
-              <Text style={[styles.fieldLabel, { marginTop: 18 }]}>Waktu Lahir</Text>
               {Platform.OS === 'web'
                 ? <WebTimeInput value={time} onChange={setTime} />
                 : <TextInput
@@ -296,11 +376,40 @@ export default function ProfileScreen() {
               }
             </>
           )}
+
+          {timeMode === 'approximate' && (
+            <View style={styles.approxList}>
+              {APPROX_TIMES.map(opt => (
+                <TouchableOpacity
+                  key={opt.value}
+                  style={[styles.approxBtn, approxTime === opt.value && styles.approxBtnActive]}
+                  onPress={() => setApproxTime(opt.value)}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.approxBtnLeft}>
+                    <Text style={[styles.approxPillar, approxTime === opt.value && { color: C.gold }]}>{opt.pillar}</Text>
+                    <View>
+                      <Text style={[styles.approxLabel, approxTime === opt.value && { color: C.text }]}>{opt.label}</Text>
+                      <Text style={styles.approxSub}>{opt.sub}</Text>
+                    </View>
+                  </View>
+                  {approxTime === opt.value && <Text style={styles.approxCheck}>✓</Text>}
+                </TouchableOpacity>
+              ))}
+              <Text style={styles.fieldHint}>Pilar jam dihitung dari tengah rentang — akan ditandai sebagai estimasi</Text>
+            </View>
+          )}
+
+          {timeMode === 'unknown' && (
+            <View style={styles.unknownBox}>
+              <Text style={styles.unknownText}>Jam kelahiran akan diestimasi dari tengah hari (12:00). Pilar Jam ditandai sebagai estimasi.</Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.card}>
           <Text style={styles.fieldLabel}>Zona Waktu</Text>
-          <View style={styles.tzRow}>
+          <View style={styles.tzGrid}>
             {TIMEZONES.map(t => {
               const active = tz === t.value;
               return (
@@ -311,7 +420,7 @@ export default function ProfileScreen() {
                   activeOpacity={0.8}
                 >
                   <Text style={[styles.tzLabel, active && { color: C.gold }]}>{t.label}</Text>
-                  <Text style={[styles.tzSub, active && { color: C.textMuted }]}>{t.sub}</Text>
+                  <Text style={[styles.tzSub, active && { color: C.textMuted }]} numberOfLines={1}>{t.sub}</Text>
                 </TouchableOpacity>
               );
             })}
@@ -319,7 +428,10 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.fieldLabel}>Jenis Kelamin <Text style={styles.optionalTag}>(untuk Luck Pillars)</Text></Text>
+          <Text style={styles.fieldLabel}>
+            Jenis Kelamin{' '}
+            <Text style={styles.optionalTag}>(untuk Luck Pillars)</Text>
+          </Text>
           <View style={styles.genderRow}>
             {GENDERS.map(g => {
               const active = gender === g.value;
@@ -363,9 +475,20 @@ export default function ProfileScreen() {
   const luckPillars: any[] = chartData?.luck_pillars ?? [];
   const activeLp: any = chartData?.active_luck_pillar ?? null;
   const hiddenTg: Record<string, any[]> = chartData?.hidden_ten_gods ?? {};
+  const hourUnknown: boolean = chartData?.hour_unknown ?? false;
+
+  const snapshotParts = (() => {
+    const text = cachedSections['full_analysis'] ?? narasi;
+    return text ? parseSnapshot(text) : null;
+  })();
 
   return (
-    <ScrollView style={styles.root} contentContainerStyle={styles.profileContainer} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      ref={scrollRef}
+      style={styles.root}
+      contentContainerStyle={styles.profileContainer}
+      showsVerticalScrollIndicator={false}
+    >
       {profileLoading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={C.gold} />
@@ -416,6 +539,19 @@ export default function ProfileScreen() {
             );
           })()}
 
+          {/* Life Strategy Snapshot Card */}
+          {snapshotParts && (
+            <View style={styles.snapshotCard}>
+              <Text style={styles.snapshotTitle}>◉ STRATEGI HIDUPMU</Text>
+              {snapshotParts.slice(0, 4).map((s, i) => (
+                <View key={i} style={styles.snapshotRow}>
+                  <Text style={styles.snapshotLabel}>{SNAPSHOT_LABELS[i]}</Text>
+                  <Text style={styles.snapshotValue}>{s}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
           {/* Four Pillars */}
           <View style={styles.sectionLabelRow}>
             <Text style={styles.sectionLabel}>EMPAT PILAR</Text>
@@ -432,6 +568,7 @@ export default function ProfileScreen() {
               const animal  = BRANCH_ANIMAL[branch] ?? '';
               const isVoid  = voidBranches.includes(branch) && branch !== '-';
               const dominantHidden = hiddenTg[p]?.[0];
+              const isHourEst = p === 'hour' && hourUnknown;
               return (
                 <View key={p} style={[styles.pillarCol, isDay && { backgroundColor: C.surfaceHigh }]}>
                   <Text style={styles.pillarColLabel}>{PILLAR_LABEL[p]}</Text>
@@ -454,10 +591,20 @@ export default function ProfileScreen() {
                       藏{dominantHidden.ten_god}
                     </Text>
                   )}
+                  {isHourEst && (
+                    <View style={styles.estimatedBadge}>
+                      <Text style={styles.estimatedBadgeText}>~</Text>
+                    </View>
+                  )}
                 </View>
               );
             })}
           </View>
+          {hourUnknown && (
+            <Text style={styles.hourEstimatedNote}>
+              ⚠ Pilar Jam dihitung dari estimasi — akurasi terbatas untuk analisis masa tua &amp; warisan
+            </Text>
+          )}
 
           {/* Stem Combinations */}
           {stemCombos.length > 0 && (
@@ -484,7 +631,7 @@ export default function ProfileScreen() {
           )}
 
           {/* Luck Pillars */}
-          {luckPillars.length > 0 && (
+          {luckPillars.length > 0 ? (
             <>
               <View style={styles.sectionLabelRow}>
                 <Text style={styles.sectionLabel}>大運 LUCK PILLARS</Text>
@@ -506,6 +653,14 @@ export default function ProfileScreen() {
                 })}
               </ScrollView>
             </>
+          ) : (
+            <View style={styles.lpMissingCard}>
+              <Text style={styles.lpMissingTitle}>大運 Luck Pillars tidak tersedia</Text>
+              <Text style={styles.lpMissingDesc}>
+                Jenis kelamin diperlukan untuk menghitung siklus 10 tahunan.
+                Reset profil dan isi ulang dengan data lengkap untuk mengaktifkan fitur ini.
+              </Text>
+            </View>
           )}
 
           {/* Void Branches info */}
@@ -531,6 +686,9 @@ export default function ProfileScreen() {
 
           {/* Narasi sections */}
           <Text style={styles.sectionLabel}>INTERPRETASI</Text>
+          {Object.keys(cachedSections).length === 0 && (
+            <Text style={styles.narasiHint}>Tap untuk membaca interpretasi BaZi chart-mu</Text>
+          )}
           <View style={styles.narasiButtons}>
             {NARASI_SECTIONS.map(s => {
               const active   = activeSection === s.key;
@@ -561,7 +719,10 @@ export default function ProfileScreen() {
           )}
 
           {!!narasi && !narasiLoading && (
-            <View style={[styles.narasiBox, isNarasiError(narasi) && styles.narasiBoxError]}>
+            <View
+              onLayout={(e) => { narasiBoxY.current = e.nativeEvent.layout.y; }}
+              style={[styles.narasiBox, isNarasiError(narasi) && styles.narasiBoxError]}
+            >
               <View style={styles.narasiBoxHeader}>
                 <Text style={styles.narasiBoxLabel}>
                   {NARASI_SECTIONS.find(s => s.key === activeSection)?.label}
@@ -601,7 +762,7 @@ export default function ProfileScreen() {
         </>
       ) : (
         <View style={styles.center}>
-          <Text style={styles.errorText}>Gagal memuat profil. Cek koneksi backend.</Text>
+          <Text style={styles.errorText}>Profil tidak dapat dimuat. Periksa koneksi internet.</Text>
         </View>
       )}
 
@@ -653,13 +814,64 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   inputActive: { borderColor: C.gold },
-  switchRow:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8 },
 
-  tzRow:       { gap: 8 },
-  tzBtn:       { backgroundColor: C.bg, borderWidth: 1.5, borderColor: C.border, borderRadius: 10, padding: 12 },
+  // Time mode selector
+  timeModeRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+  timeModeBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: C.border,
+    backgroundColor: C.bg,
+    alignItems: 'center',
+  },
+  timeModeBtnActive: { borderColor: C.gold, backgroundColor: C.surfaceHigh },
+  timeModeBtnText:   { fontSize: 12, fontWeight: '700', color: C.textMuted },
+
+  // Approximate time list
+  approxList: { gap: 6 },
+  approxBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: C.border,
+    backgroundColor: C.bg,
+  },
+  approxBtnActive: { borderColor: C.gold, backgroundColor: C.surfaceHigh },
+  approxBtnLeft:   { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  approxPillar:    { fontSize: 22, fontWeight: '900', color: C.textMuted, width: 28 },
+  approxLabel:     { fontSize: 13, fontWeight: '700', color: C.textMuted },
+  approxSub:       { fontSize: 11, color: C.textFaint, marginTop: 1 },
+  approxCheck:     { fontSize: 16, color: C.gold, fontWeight: '900' },
+
+  // Unknown time box
+  unknownBox: {
+    backgroundColor: C.bg,
+    borderWidth: 1.5,
+    borderColor: C.amber + '55',
+    borderRadius: 10,
+    padding: 12,
+  },
+  unknownText: { fontSize: 13, color: C.amber, lineHeight: 20 },
+
+  // Timezone grid (3-col)
+  tzGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  tzBtn: {
+    width: '30%',
+    flexGrow: 1,
+    backgroundColor: C.bg,
+    borderWidth: 1.5,
+    borderColor: C.border,
+    borderRadius: 10,
+    padding: 10,
+  },
   tzBtnActive: { borderColor: C.gold, backgroundColor: C.surfaceHigh },
-  tzLabel:     { fontSize: 15, fontWeight: '700', color: C.textMuted },
-  tzSub:       { fontSize: 12, color: C.textFaint, marginTop: 2 },
+  tzLabel:     { fontSize: 14, fontWeight: '700', color: C.textMuted },
+  tzSub:       { fontSize: 10, color: C.textFaint, marginTop: 2 },
 
   genderRow:       { flexDirection: 'row', gap: 10 },
   genderBtn:       { flex: 1, backgroundColor: C.bg, borderWidth: 1.5, borderColor: C.border, borderRadius: 10, padding: 13, alignItems: 'center' },
@@ -694,54 +906,40 @@ const styles = StyleSheet.create({
   dayMasterEl:    { fontSize: 15, fontWeight: '700', color: C.text },
   dayMasterLabel: { fontSize: 12, color: C.textMuted, fontWeight: '600', letterSpacing: 0.5 },
   dayMasterBadges:{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
-  strengthBadge:  {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-  },
-  strengthText: { fontSize: 13, fontWeight: '700' },
+  strengthBadge:  { borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 3 },
+  strengthText:   { fontSize: 13, fontWeight: '700' },
   geJuBadge: {
-    borderWidth: 1,
-    borderColor: C.textFaint,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
+    borderWidth: 1, borderColor: C.textFaint, borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 3,
   },
   geJuText: { fontSize: 13, fontWeight: '700', color: C.textMuted },
   yongShenRow:  { marginTop: 4 },
   yongShenLabel:{ fontSize: 11, color: C.textFaint, fontWeight: '600' },
   yongShenValue:{ fontSize: 13, color: C.goldSoft, fontWeight: '700' },
 
+  // Snapshot card
+  snapshotCard: {
+    backgroundColor: C.surfaceHigh,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: C.gold + '55',
+  },
+  snapshotTitle: { fontSize: 10, fontWeight: '900', color: C.gold, letterSpacing: 1.5, marginBottom: 12 },
+  snapshotRow:   { marginBottom: 8 },
+  snapshotLabel: { fontSize: 10, color: C.textFaint, fontWeight: '700', letterSpacing: 0.5, marginBottom: 2 },
+  snapshotValue: { fontSize: 14, color: C.text, lineHeight: 21, fontWeight: '500' },
+
   sectionLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: C.textFaint,
-    letterSpacing: 1.5,
-    marginTop: 4,
+    fontSize: 11, fontWeight: '800', color: C.textFaint, letterSpacing: 1.5, marginTop: 4,
   },
   sectionLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10,
   },
-  infoBtn: {
-    width: 22,
-    height: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  infoBtnText: {
-    fontSize: 14,
-    color: C.textFaint,
-    lineHeight: 18,
-  },
-  dayMasterLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
+  infoBtn: { width: 22, height: 22, alignItems: 'center', justifyContent: 'center' },
+  infoBtnText: { fontSize: 14, color: C.textFaint, lineHeight: 18 },
+  dayMasterLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
 
   pillarsContainer: {
     flexDirection: 'row',
@@ -750,7 +948,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: C.border,
-    marginBottom: 20,
+    marginBottom: 8,
   },
   pillarCol: {
     flex: 1,
@@ -770,16 +968,23 @@ const styles = StyleSheet.create({
   pillarColAnimal:    { fontSize: 9, color: C.textFaint, marginTop: 4 },
   pillarColGod:       { fontSize: 10, fontWeight: '700', marginTop: 4 },
   pillarColHiddenGod: { fontSize: 9, color: C.textFaint, marginTop: 2, fontStyle: 'italic' },
+  estimatedBadge: {
+    backgroundColor: C.amber + '33',
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    marginTop: 4,
+  },
+  estimatedBadgeText: { fontSize: 8, color: C.amber, fontWeight: '900' },
+  hourEstimatedNote:  {
+    fontSize: 12, color: C.amber, lineHeight: 18, marginBottom: 16,
+    paddingHorizontal: 4, opacity: 0.85,
+  },
 
   // Stem Combinations
   comboCard: {
-    backgroundColor: C.surface,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: C.border,
-    gap: 8,
+    backgroundColor: C.surface, borderRadius: 12, padding: 14, marginBottom: 20,
+    borderWidth: 1, borderColor: C.border, gap: 8,
   },
   comboRow:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   comboStems:     { fontSize: 15, fontWeight: '700' },
@@ -789,34 +994,32 @@ const styles = StyleSheet.create({
   lpScroll:        { marginBottom: 20 },
   lpScrollContent: { paddingHorizontal: 2, gap: 10 },
   lpCard: {
-    width: 64,
-    alignItems: 'center',
-    backgroundColor: C.surface,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 4,
-    borderWidth: 1,
-    borderColor: C.border,
-    gap: 2,
+    width: 64, alignItems: 'center', backgroundColor: C.surface, borderRadius: 12,
+    paddingVertical: 12, paddingHorizontal: 4, borderWidth: 1, borderColor: C.border, gap: 2,
   },
-  lpCardActive: {
-    borderColor: C.gold,
-    backgroundColor: C.surfaceHigh,
-  },
-  lpActiveTag: { fontSize: 7, fontWeight: '900', color: C.gold, letterSpacing: 0.5, marginBottom: 2 },
-  lpStem:      { fontSize: 22, fontWeight: '900', color: C.textMuted },
-  lpDivider:   { width: 16, height: 1, borderTopWidth: 1, marginVertical: 4 },
-  lpBranch:    { fontSize: 22, fontWeight: '900', color: C.text },
-  lpAge:       { fontSize: 10, color: C.textFaint, marginTop: 4, fontWeight: '700' },
+  lpCardActive: { borderColor: C.gold, backgroundColor: C.surfaceHigh },
+  lpActiveTag:  { fontSize: 7, fontWeight: '900', color: C.gold, letterSpacing: 0.5, marginBottom: 2 },
+  lpStem:       { fontSize: 22, fontWeight: '900', color: C.textMuted },
+  lpDivider:    { width: 16, height: 1, borderTopWidth: 1, marginVertical: 4 },
+  lpBranch:     { fontSize: 22, fontWeight: '900', color: C.text },
+  lpAge:        { fontSize: 10, color: C.textFaint, marginTop: 4, fontWeight: '700' },
 
-  // Void Branches
-  voidCard: {
+  // LP Missing card
+  lpMissingCard: {
     backgroundColor: C.surface,
     borderRadius: 12,
-    padding: 14,
+    padding: 16,
     marginBottom: 20,
     borderWidth: 1,
     borderColor: C.border,
+  },
+  lpMissingTitle: { fontSize: 13, fontWeight: '800', color: C.textMuted, marginBottom: 6 },
+  lpMissingDesc:  { fontSize: 13, color: C.textFaint, lineHeight: 20 },
+
+  // Void Branches
+  voidCard: {
+    backgroundColor: C.surface, borderRadius: 12, padding: 14, marginBottom: 20,
+    borderWidth: 1, borderColor: C.border,
   },
   voidBranchRow:     { flexDirection: 'row', gap: 10, marginBottom: 8 },
   voidBranchChip:    { alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8, backgroundColor: C.bg, borderRadius: 10, borderWidth: 1, borderColor: C.textFaint },
@@ -824,17 +1027,12 @@ const styles = StyleSheet.create({
   voidBranchChipSub: { fontSize: 9, color: C.textFaint, marginTop: 2 },
   voidNote:          { fontSize: 12, color: C.textFaint, lineHeight: 18 },
 
-  narasiButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
+  narasiHint: { fontSize: 13, color: C.textFaint, marginBottom: 10, fontStyle: 'italic' },
+  narasiButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14, marginTop: 8 },
   narasiBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: C.border,
-    backgroundColor: C.surface,
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10,
+    borderWidth: 1.5, borderColor: C.border, backgroundColor: C.surface,
   },
   narasiBtnActive: { borderColor: C.gold, backgroundColor: C.surfaceHigh },
   narasiBtnIcon:   { fontSize: 14, color: C.textMuted },
@@ -845,14 +1043,9 @@ const styles = StyleSheet.create({
   narasiLoadingText:{ color: C.textMuted, fontSize: 13 },
 
   narasiBox: {
-    backgroundColor: C.surface,
-    borderWidth: 1,
-    borderColor: C.border,
-    borderLeftWidth: 3,
-    borderLeftColor: C.gold,
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 20,
+    backgroundColor: C.surface, borderWidth: 1, borderColor: C.border,
+    borderLeftWidth: 3, borderLeftColor: C.gold, borderRadius: 14,
+    padding: 16, marginBottom: 20,
   },
   narasiBoxError:  { borderLeftColor: '#c0392b', borderColor: '#c0392b44' },
   narasiBoxHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
@@ -860,32 +1053,21 @@ const styles = StyleSheet.create({
   narasiBoxText:   { fontSize: 14, lineHeight: 24, color: C.text },
   narasiErrorText: { color: '#e07070', fontSize: 13 },
   retryBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#c0392b88',
-    backgroundColor: '#c0392b22',
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8,
+    borderWidth: 1, borderColor: '#c0392b88', backgroundColor: '#c0392b22',
   },
   retryBtnText: { fontSize: 12, fontWeight: '700', color: '#e07070' },
 
   birthCard: {
-    backgroundColor: C.surface,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: C.border,
+    backgroundColor: C.surface, borderRadius: 12, padding: 14, marginBottom: 12,
+    borderWidth: 1, borderColor: C.border,
   },
   birthTitle: { fontSize: 11, fontWeight: '700', color: C.textFaint, letterSpacing: 0.8, marginBottom: 6 },
   birthValue: { fontSize: 14, color: C.textMuted, lineHeight: 22 },
 
   resetBtn: {
-    borderWidth: 1.5,
-    borderColor: C.red,
-    borderRadius: 12,
-    paddingVertical: 13,
-    alignItems: 'center',
+    borderWidth: 1.5, borderColor: C.red, borderRadius: 12,
+    paddingVertical: 13, alignItems: 'center',
   },
   resetBtnText: { color: C.red, fontWeight: '700', fontSize: 14 },
 });

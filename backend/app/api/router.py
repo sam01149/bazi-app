@@ -10,7 +10,7 @@ from app.database import get_db
 from app.models.schemas import (
     ChartCalculateRequest, ChartResponse, CalendarResponse,
     NarasiGenerateRequest, PillarsSchema, PillarSchema,
-    WishCreateRequest, WishResponse, WishAnalyzeRequest,
+    WishCreateRequest, WishResponse, WishAnalyzeRequest, WishUpdateRequest,
     ProfileResponse, CalendarNarasiRequest, LuckPillarSchema,
 )
 from app.models.domain import BaZiChart, TenGod, Wish, CachedNarasi, LuckPillar
@@ -22,7 +22,7 @@ from app.engine.calculator import (
 )
 from app.engine.interactions import detect_calendar_interactions, detect_stem_combinations
 from app.engine.tables import HEAVENLY_STEMS_ELEMENT, HEAVENLY_STEMS_POLARITY
-from app.services.cerebras import generate_narasi, generate_wish_analysis, generate_calendar_narasi, is_error_narasi
+from app.services.cerebras import generate_narasi, generate_wish_analysis, generate_calendar_narasi, generate_annual_narasi, is_error_narasi
 
 router = APIRouter()
 
@@ -95,6 +95,7 @@ def _build_chart_response(
         hidden_ten_gods=hidden_ten_gods or None,
         luck_pillars=lp_schemas or None,
         active_luck_pillar=active_lp,
+        hour_unknown=db_chart.hour_unknown or False,
     )
 
 
@@ -164,6 +165,7 @@ async def calculate_chart(req: ChartCalculateRequest, db: AsyncSession = Depends
         gender=req.gender,
         ge_ju=ge_ju,
         yong_shen=yong_shen,
+        hour_unknown=req.birth_time is None or req.hour_unknown,
     )
     db.add(db_chart)
     await db.flush()
@@ -510,6 +512,19 @@ async def delete_wish(wish_id: str, db: AsyncSession = Depends(get_db)):
     return {"ok": True}
 
 
+@router.patch("/wishes/{wish_id}", response_model=WishResponse)
+async def update_wish(wish_id: str, req: WishUpdateRequest, db: AsyncSession = Depends(get_db)):
+    stmt = select(Wish).where(Wish.id == wish_id)
+    result = await db.execute(stmt)
+    wish = result.scalars().first()
+    if not wish:
+        raise HTTPException(status_code=404, detail="Wish not found")
+    wish.content = req.content.strip()
+    await db.commit()
+    await db.refresh(wish)
+    return wish
+
+
 @router.post("/wishes/{wish_id}/analyze", response_model=WishResponse)
 async def analyze_wish(wish_id: str, req: WishAnalyzeRequest, db: AsyncSession = Depends(get_db)):
     stmt = select(Wish).where(Wish.id == wish_id)
@@ -533,6 +548,7 @@ async def analyze_wish(wish_id: str, req: WishAnalyzeRequest, db: AsyncSession =
 
     analysis = await generate_wish_analysis(chart_dict, wish.content)
     wish.analysis = analysis
+    wish.analyzed_at = datetime.utcnow()
     await db.commit()
     await db.refresh(wish)
     return wish
@@ -546,6 +562,57 @@ _SOLAR_TERM_NAMES = [
     "小暑", "大暑", "立秋", "處暑", "白露", "秋分",
     "寒露", "霜降", "立冬", "小雪", "大雪", "冬至",
 ]
+
+
+@router.get("/calendar/annual")
+async def get_annual_analysis(year: int, chart_id: str, timezone: str = "Asia/Jakarta", db: AsyncSession = Depends(get_db)):
+    try:
+        tz = pytz.timezone(timezone)
+    except pytz.UnknownTimeZoneError:
+        raise HTTPException(status_code=400, detail="Invalid timezone")
+
+    stmt = (
+        select(BaZiChart)
+        .where(BaZiChart.id == chart_id)
+        .options(selectinload(BaZiChart.ten_gods), selectinload(BaZiChart.luck_pillars))
+    )
+    result = await db.execute(stmt)
+    db_chart = result.scalars().first()
+    if not db_chart:
+        raise HTTPException(status_code=404, detail="Chart not found")
+
+    # Get year pillar
+    dt_year = tz.localize(datetime(year, 2, 5, 12, 0))  # ~Li Chun
+    cal_year = get_bazi_chart(dt_year)
+    year_pillar = {
+        "stem": cal_year["pillars"]["year"]["stem"],
+        "branch": cal_year["pillars"]["year"]["branch"],
+    }
+
+    user_dict = {
+        "pillars": {
+            "year":  {"branch": db_chart.year_branch},
+            "month": {"branch": db_chart.month_branch},
+            "day":   {"branch": db_chart.day_branch},
+            "hour":  {"branch": db_chart.hour_branch},
+        }
+    }
+    from app.engine.calculator import get_bazi_chart as _gc
+    year_cal = get_bazi_chart(dt_year)
+    interactions_raw = detect_calendar_interactions(user_dict, year_cal)
+    interactions_list = [_interaction_to_dict(i) for i in interactions_raw]
+
+    ten_gods_map = {tg.position: tg.ten_god for tg in db_chart.ten_gods if tg.stem_or_branch == "stem"}
+    chart_dict = _build_chart_dict(db_chart, ten_gods_map, db_chart.luck_pillars)
+
+    narasi = await generate_annual_narasi(chart_dict, year_pillar, interactions_list, year)
+
+    return {
+        "year": year,
+        "year_pillar": year_pillar,
+        "interactions": interactions_list,
+        "narasi": narasi,
+    }
 
 
 @router.get("/solar-terms/year/{year}")

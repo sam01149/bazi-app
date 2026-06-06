@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, DateTime, Text, ForeignKey, Integer, Float
+from sqlalchemy import Column, String, DateTime, Text, ForeignKey, Integer, Float, Boolean
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 from app.database import Base
@@ -38,6 +38,7 @@ class BaZiChart(Base):
     gender = Column(String(10), nullable=True)
     ge_ju = Column(String(30), nullable=True)
     yong_shen = Column(String(30), nullable=True)
+    hour_unknown = Column(Boolean, default=False)
     created_at = Column(DateTime, default=_now_utc)
 
     user = relationship("User", back_populates="charts")
@@ -83,6 +84,7 @@ class Wish(Base):
     chart_id = Column(String(36), ForeignKey("bazi_charts.id"), nullable=False)
     content = Column(String(2000), nullable=False)
     analysis = Column(Text, nullable=True)
+    analyzed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=_now_utc)
 
     chart = relationship("BaZiChart", back_populates="wishes")

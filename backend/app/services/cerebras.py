@@ -55,8 +55,8 @@ Analisis dalam urutan ini:
 7. Luck cycle — tema dekade aktif + strategi untuk Yong Shen (HANYA jika active_luck_pillar tersedia)
    Jika ada void_branches: identifikasi ten god mana yang void dan dampaknya
 
-Tutup dengan: Life Strategy Snapshot
-Format: core nature | best arena | biggest trap | long-term winning move"""
+Tutup WAJIB dengan baris terakhir format persis ini (satu baris, diawali 'Snapshot:'):
+Snapshot: [core nature] | [best arena] | [biggest trap] | [long-term move]"""
 
 WISH_SYSTEM_PROMPT = """Kamu adalah BaZi Strategic Analyst menggunakan framework Zi Ping Zhen Quan (子平真詮).
 
@@ -98,6 +98,8 @@ Jika ada interaksi, analisis dalam urutan ini:
 1. Baca interaksi — mana yang menekan atau mendukung Yong Shen (用神) chart
 2. Dampak ke pola konkret — area mana yang cenderung terdampak (keputusan, relasi, produktivitas, energi)
 3. Tutup dengan 1 kalimat tendensi taktis hari itu untuk orang ini
+
+Jika tanggal yang dianalisis sudah lewat: frame analisis sebagai retrospektif ("pada tanggal tersebut, kecenderungan energinya adalah..."), bukan forward-looking.
 
 Format: maksimal 2 paragraf ringkas."""
 
@@ -190,6 +192,47 @@ async def generate_wish_analysis(chart_data: Dict[str, Any], wish_content: str) 
         {"role": "user", "content": json.dumps({"chart": chart_payload, "keinginan": wish_content}, ensure_ascii=False)},
     ]
     return await _call_ai(messages, max_tokens=1200)
+
+
+ANNUAL_SYSTEM_PROMPT = """Kamu adalah BaZi Strategic Analyst.
+WAJIB: framing probabilistik. BAHASA: Indonesia.
+DILARANG: prediksi deterministik, afirmasi palsu.
+
+Input: chart natal + pilar tahun berjalan + interaksi natal vs tahun.
+
+Analisis dalam 2 paragraf ringkas:
+1. Tema makro tahun ini — elemen dominan tahun + dampaknya ke Day Master dan Yong Shen chart
+2. Area prioritas dan area risiko berdasarkan interaksi yang ada
+
+Tutup satu kalimat: "Strategi tahun ini: [satu kalimat taktis]"
+Format: maksimal 3 paragraf pendek."""
+
+
+async def generate_annual_narasi(
+    chart_data: Dict[str, Any],
+    year_pillar: Dict[str, str],
+    interactions: list,
+    year: int,
+) -> str:
+    chart_payload = {
+        "day_master": chart_data.get("day_master", ""),
+        "strength": chart_data.get("strength", ""),
+        "ge_ju": chart_data.get("ge_ju"),
+        "yong_shen": chart_data.get("yong_shen"),
+        "pillars": chart_data.get("pillars", {}),
+        "active_luck_pillar": chart_data.get("active_luck_pillar"),
+    }
+    chart_payload = {k: v for k, v in chart_payload.items() if v is not None}
+    messages = [
+        {"role": "system", "content": ANNUAL_SYSTEM_PROMPT},
+        {"role": "user", "content": json.dumps({
+            "tahun": year,
+            "chart_natal": chart_payload,
+            "pilar_tahun": year_pillar,
+            "interaksi": interactions,
+        }, ensure_ascii=False)},
+    ]
+    return await _call_ai(messages, max_tokens=700)
 
 
 async def generate_calendar_narasi(

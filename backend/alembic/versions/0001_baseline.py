@@ -17,17 +17,14 @@ depends_on = None
 
 
 def upgrade() -> None:
-    conn = op.get_bind()
-
-    conn.execute(text("""
+    op.execute(text("""
         CREATE TABLE IF NOT EXISTS users (
             id           VARCHAR(36) PRIMARY KEY,
             timezone     VARCHAR(50) NOT NULL,
             created_at   TIMESTAMP
         )
     """))
-
-    conn.execute(text("""
+    op.execute(text("""
         CREATE TABLE IF NOT EXISTS bazi_charts (
             id                  VARCHAR(36) PRIMARY KEY,
             user_id             VARCHAR(36) REFERENCES users(id),
@@ -49,21 +46,19 @@ def upgrade() -> None:
             created_at          TIMESTAMP
         )
     """))
-
-    conn.execute(text("""
+    op.execute(text("""
         CREATE TABLE IF NOT EXISTS ten_gods (
-            id            VARCHAR(36) PRIMARY KEY,
-            chart_id      VARCHAR(36) REFERENCES bazi_charts(id),
-            position      VARCHAR(20),
+            id             VARCHAR(36) PRIMARY KEY,
+            chart_id       VARCHAR(36) REFERENCES bazi_charts(id),
+            position       VARCHAR(20),
             stem_or_branch VARCHAR(5),
-            ten_god       VARCHAR(10),
-            element       VARCHAR(10),
-            polarity      VARCHAR(5),
-            source_branch VARCHAR(5)
+            ten_god        VARCHAR(10),
+            element        VARCHAR(10),
+            polarity       VARCHAR(5),
+            source_branch  VARCHAR(5)
         )
     """))
-
-    conn.execute(text("""
+    op.execute(text("""
         CREATE TABLE IF NOT EXISTS luck_pillars (
             id          VARCHAR(36) PRIMARY KEY,
             chart_id    VARCHAR(36) NOT NULL REFERENCES bazi_charts(id),
@@ -73,8 +68,7 @@ def upgrade() -> None:
             age_start   FLOAT       NOT NULL
         )
     """))
-
-    conn.execute(text("""
+    op.execute(text("""
         CREATE TABLE IF NOT EXISTS wishes (
             id          VARCHAR(36) PRIMARY KEY,
             chart_id    VARCHAR(36) NOT NULL REFERENCES bazi_charts(id),
@@ -84,8 +78,7 @@ def upgrade() -> None:
             created_at  TIMESTAMP
         )
     """))
-
-    conn.execute(text("""
+    op.execute(text("""
         CREATE TABLE IF NOT EXISTS cached_narasi (
             id           VARCHAR(36) PRIMARY KEY,
             chart_id     VARCHAR(36) NOT NULL REFERENCES bazi_charts(id),
@@ -97,6 +90,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    conn = op.get_bind()
     for table in ["cached_narasi", "wishes", "luck_pillars", "ten_gods", "bazi_charts", "users"]:
-        conn.execute(text(f"DROP TABLE IF EXISTS {table}"))
+        op.execute(text(f"DROP TABLE IF EXISTS {table}"))

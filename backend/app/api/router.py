@@ -729,15 +729,16 @@ async def get_energy_summary(chart_id: str, date: str, db: AsyncSession = Depend
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid date format, use YYYY-MM-DD")
 
-    chart_data = get_bazi_chart(target_dt)
-    cal_branches = [
-        chart_data["year_pillar"][1],
-        chart_data["month_pillar"][1],
-        chart_data["day_pillar"][1],
-        chart_data["hour_pillar"][1],
-    ]
-    natal_branches = [db_chart.year_branch, db_chart.month_branch, db_chart.day_branch, db_chart.hour_branch]
-    interactions = detect_calendar_interactions(natal_branches, cal_branches)
+    cal = get_bazi_chart(target_dt)
+    natal_dict = {
+        "pillars": {
+            "year":  {"branch": db_chart.year_branch},
+            "month": {"branch": db_chart.month_branch},
+            "day":   {"branch": db_chart.day_branch},
+            "hour":  {"branch": db_chart.hour_branch or ""},
+        }
+    }
+    interactions = detect_calendar_interactions(natal_dict, cal)
 
     if any(i["type"] == "clash" for i in interactions):
         level = "challenging"

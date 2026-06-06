@@ -6,7 +6,9 @@
       "Bash(not exist *)",
       "Bash(npx tsc *)",
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(list\\(d.get\\('dependencies',{}\\).keys\\(\\)\\)\\)\")",
-      "Bash(npx expo *)"
+      "Bash(npx expo *)",
+      "Bash(python -m pytest tests/test_calculator.py -v)",
+      "Bash(python -c ' *)"
     ]
   }
 }

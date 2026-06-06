@@ -5,12 +5,16 @@ import {
 } from 'react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
 import { API_URL } from '../config';
 import { useChart } from '../context/ChartContext';
 import { C, STEM_COLOR, STEM_ELEMENT, BRANCH_ANIMAL } from '../theme';
 import InfoModal from '../components/InfoModal';
 
-const ONBOARDING_KEY = '@bazi_onboarding_seen';
+const ONBOARDING_KEY  = '@bazi_onboarding_seen';
+const NOTIF_KEY       = '@bazi_notifications_enabled';
+const NOTIF_CHANNEL   = 'bazi-daily';
+const NOTIF_HOUR      = 8;
 const SCREEN_W = Dimensions.get('window').width;
 
 const ONBOARDING_SLIDES = [
@@ -235,6 +239,62 @@ export default function ProfileScreen() {
   const dismissOnboarding = async () => {
     await AsyncStorage.setItem(ONBOARDING_KEY, 'true');
     setOnboardingVisible(false);
+  };
+
+  // Notifications
+  const [notifEnabled, setNotifEnabled] = useState(false);
+  const [notifLoading, setNotifLoading] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    AsyncStorage.getItem(NOTIF_KEY).then(val => setNotifEnabled(val === 'true'));
+  }, []);
+
+  const toggleNotification = async () => {
+    if (Platform.OS === 'web') {
+      Alert.alert('Notifikasi', 'Notifikasi harian hanya tersedia di aplikasi mobile (Android/iOS).');
+      return;
+    }
+    setNotifLoading(true);
+    try {
+      if (notifEnabled) {
+        await Notifications.cancelAllScheduledNotificationsAsync();
+        await AsyncStorage.setItem(NOTIF_KEY, 'false');
+        setNotifEnabled(false);
+      } else {
+        const { status } = await Notifications.requestPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Izin Ditolak', 'Aktifkan izin notifikasi di pengaturan perangkat untuk menggunakan fitur ini.');
+          return;
+        }
+        if (Platform.OS === 'android') {
+          await Notifications.setNotificationChannelAsync(NOTIF_CHANNEL, {
+            name: 'BaZi Harian',
+            importance: Notifications.AndroidImportance.DEFAULT,
+          });
+        }
+        await Notifications.cancelAllScheduledNotificationsAsync();
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'BaZi Harian',
+            body: 'Cek energi dan interaksi hari ini →',
+            data: { screen: 'Kalender' },
+          },
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.DAILY,
+            hour: NOTIF_HOUR,
+            minute: 0,
+          },
+        });
+        await AsyncStorage.setItem(NOTIF_KEY, 'true');
+        setNotifEnabled(true);
+        Alert.alert('Aktif!', `Notifikasi harian dijadwalkan setiap pukul 0${NOTIF_HOUR}.00.`);
+      }
+    } catch {
+      Alert.alert('Gagal', 'Tidak dapat mengatur notifikasi. Coba lagi.');
+    } finally {
+      setNotifLoading(false);
+    }
   };
 
   const info = (key: TermKey) => (
@@ -1153,6 +1213,22 @@ export default function ProfileScreen() {
             )}
           </View>
 
+          {/* Notification toggle */}
+          <TouchableOpacity
+            style={styles.notifRow}
+            onPress={toggleNotification}
+            activeOpacity={0.8}
+            disabled={notifLoading}
+          >
+            <View>
+              <Text style={styles.notifLabel}>Notifikasi Harian</Text>
+              <Text style={styles.notifSub}>Pengingat pukul 0{NOTIF_HOUR}.00 setiap hari</Text>
+            </View>
+            <View style={[styles.notifPill, notifEnabled && styles.notifPillOn]}>
+              <View style={[styles.notifThumb, notifEnabled && styles.notifThumbOn]} />
+            </View>
+          </TouchableOpacity>
+
           <TouchableOpacity style={styles.resetBtn} onPress={confirmReset} activeOpacity={0.8}>
             <Text style={styles.resetBtnText}>Reset Profil</Text>
           </TouchableOpacity>
@@ -1572,6 +1648,25 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: C.border, alignItems: 'center',
   },
   compareCloseBtnText: { color: C.textMuted, fontWeight: '700', fontSize: 14 },
+
+  // Notification toggle
+  notifRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: C.surface, borderRadius: 12, padding: 14,
+    borderWidth: 1, borderColor: C.border, marginBottom: 10,
+  },
+  notifLabel: { fontSize: 14, fontWeight: '700', color: C.text, marginBottom: 2 },
+  notifSub:   { fontSize: 11, color: C.textFaint },
+  notifPill: {
+    width: 46, height: 26, borderRadius: 13,
+    backgroundColor: C.border, justifyContent: 'center', padding: 2,
+  },
+  notifPillOn: { backgroundColor: C.teal },
+  notifThumb: {
+    width: 22, height: 22, borderRadius: 11, backgroundColor: C.textFaint,
+    alignSelf: 'flex-start',
+  },
+  notifThumbOn: { backgroundColor: '#fff', alignSelf: 'flex-end' },
 
   // Onboarding
   onboardRoot: {

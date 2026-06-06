@@ -4,7 +4,9 @@
       "Bash(dir \"c:\\\\Users\\\\sam\\\\Documents\\\\kerja\\\\Self app\\\\hf-deploy\\\\backend\\\\app\\\\engine\")",
       "Bash(dir \"c:\\\\Users\\\\sam\\\\Documents\\\\kerja\\\\Self app\\\\hf-deploy\\\\backend\\\\app\\\\services\")",
       "Bash(not exist *)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(list\\(d.get\\('dependencies',{}\\).keys\\(\\)\\)\\)\")",
+      "Bash(npx expo *)"
     ]
   }
 }

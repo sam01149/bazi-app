@@ -708,6 +708,57 @@ async def get_annual_analysis(year: int, chart_id: str, timezone: str = "Asia/Ja
     }
 
 
+@router.get("/calendar/energy-summary")
+async def get_energy_summary(chart_id: str, date: str, db: AsyncSession = Depends(get_db)):
+    """Rule-based energy summary for a given date vs natal chart. Used by push notifications."""
+    result = await db.execute(
+        select(BaZiChart).options(selectinload(BaZiChart.luck_pillars)).where(BaZiChart.id == chart_id)
+    )
+    db_chart = result.scalars().first()
+    if not db_chart:
+        raise HTTPException(status_code=404, detail="Chart not found")
+
+    try:
+        tz = pytz.timezone(db_chart.birth_timezone)
+    except Exception:
+        tz = pytz.UTC
+
+    try:
+        target_date = datetime.strptime(date, "%Y-%m-%d")
+        target_dt = tz.localize(target_date.replace(hour=12))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid date format, use YYYY-MM-DD")
+
+    chart_data = get_bazi_chart(target_dt)
+    cal_branches = [
+        chart_data["year_pillar"][1],
+        chart_data["month_pillar"][1],
+        chart_data["day_pillar"][1],
+        chart_data["hour_pillar"][1],
+    ]
+    natal_branches = [db_chart.year_branch, db_chart.month_branch, db_chart.day_branch, db_chart.hour_branch]
+    interactions = detect_calendar_interactions(natal_branches, cal_branches)
+
+    if any(i["type"] == "clash" for i in interactions):
+        level = "challenging"
+        label = "Hari Penuh Gesekan"
+        body = "Ada benturan energi hari ini. Cek interaksi dan strategi taktismu."
+    elif any(i["type"] in ("harm", "penalty", "self_penalty") for i in interactions):
+        level = "caution"
+        label = "Perlu Kewaspadaan"
+        body = "Ada hambatan energi hari ini. Baca analisis untuk panduan."
+    elif any(i["type"] == "six_combination" for i in interactions):
+        level = "good"
+        label = "Energi Mendukung"
+        body = "Hari ini ada kombinasi positif di chartmu."
+    else:
+        level = "neutral"
+        label = "Energi Netral"
+        body = "Tidak ada interaksi khusus hari ini."
+
+    return {"level": level, "label": label, "body": body, "interaction_count": len(interactions)}
+
+
 @router.get("/solar-terms/year/{year}")
 async def get_solar_terms(year: int):
     if year < 1900 or year > 2100:

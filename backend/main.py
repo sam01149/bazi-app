@@ -1,37 +1,24 @@
 from dotenv import load_dotenv
-load_dotenv()  # Load environment variables dari .env file
+load_dotenv()
 
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
 from app.api.router import router as api_router
 from app.database import engine, Base
 from contextlib import asynccontextmanager
 
 
-async def _run_migrations(conn):
-    """Add new columns to existing tables (idempotent — silently skips if already present)."""
-    migrations = [
-        "ALTER TABLE bazi_charts ADD COLUMN gender VARCHAR(10)",
-        "ALTER TABLE bazi_charts ADD COLUMN ge_ju VARCHAR(30)",
-        "ALTER TABLE bazi_charts ADD COLUMN yong_shen VARCHAR(30)",
-        "ALTER TABLE ten_gods ADD COLUMN source_branch VARCHAR(5)",
-        "ALTER TABLE bazi_charts ADD COLUMN hour_unknown BOOLEAN DEFAULT FALSE",
-        "ALTER TABLE wishes ADD COLUMN analyzed_at TIMESTAMP",
-    ]
-    for stmt in migrations:
-        try:
-            await conn.execute(text(stmt))
-        except Exception:
-            pass  # Column already exists — safe to ignore
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        await _run_migrations(conn)
+    # SQLite dev: create tables directly (alembic not used for local dev).
+    # PostgreSQL prod: Dockerfile runs `alembic upgrade head` before uvicorn starts.
+    db_url = os.getenv("DATABASE_URL", "")
+    if not db_url or "sqlite" in db_url:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
     yield
+
 
 app = FastAPI(title="BaZi App API", lifespan=lifespan)
 
@@ -44,6 +31,7 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix="/api")
+
 
 @app.get("/")
 def read_root():

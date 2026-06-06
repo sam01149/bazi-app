@@ -293,9 +293,10 @@ git push hf master:main
   - Feat: **P4-C Unit Tests** — `backend/tests/test_calculator.py`: day pillar anchor, Joey Yap example, 60-day cycling, historical; year pillar before/after Li Chun; hour pillar midnight/noon; all 10 Ten Gods; Kong Wang; Ge Ju/Yong Shen; Luck Pillars count/ages/gap; Life Stages yang/yin; Special Stars Gui Ren/Tao Hua/Wen Chang
   - Feat: **P4-E Onboarding Tutorial** — 3-slide fullscreen Modal di ProfileScreen; FlatList horizontal + indicator dots; Lewati/Lanjut/Mulai → buttons; flag `@bazi_onboarding_seen` di AsyncStorage; tampil sekali saja saat pertama install
   - Fix: `InfoModal.tsx` — `StyleSheet.absoluteFillObject` → `StyleSheet.absoluteFill` (TypeScript error)
+  - Feat: **P4-B Notifikasi Harian** — toggle di ProfileScreen; `expo-notifications`; izin permission + jadwal notifikasi lokal harian pukul 08.00; Android notification channel; toggle persisten via `@bazi_notifications_enabled`; web: info message; `app.json` diperbarui dengan plugin `expo-notifications`
+  - Feat: **P4-D Alembic Migrations** — `alembic/` directory + `alembic.ini`; `env.py` async (SQLAlchemy async engine, asyncpg, `asyncio.run`); `versions/0001_baseline.py` — semua tabel dengan `CREATE TABLE IF NOT EXISTS` (idempotent di prod); Dockerfile diperbarui: `alembic upgrade head && uvicorn`; `main.py` lifespan disederhanakan — hanya `create_all()` untuk SQLite dev, PostgreSQL prod pakai alembic; `alembic` ditambahkan ke `requirements.txt`
 
 ### Belum Ada / Known Issues ⚠️
-- **Alembic migrations belum setup** — pakai `create_all()` + inline ALTER TABLE di lifespan
 - **Tidak ada multi-user server-side** — profil hanya di AsyncStorage lokal, tidak ada login/akun
 
 ---

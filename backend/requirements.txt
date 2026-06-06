@@ -8,3 +8,4 @@ aiosqlite
 python-dotenv
 pytz
 httpx
+alembic

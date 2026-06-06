@@ -597,9 +597,7 @@ async def get_annual_analysis(year: int, chart_id: str, timezone: str = "Asia/Ja
             "hour":  {"branch": db_chart.hour_branch},
         }
     }
-    from app.engine.calculator import get_bazi_chart as _gc
-    year_cal = get_bazi_chart(dt_year)
-    interactions_raw = detect_calendar_interactions(user_dict, year_cal)
+    interactions_raw = detect_calendar_interactions(user_dict, cal_year)
     interactions_list = [_interaction_to_dict(i) for i in interactions_raw]
 
     ten_gods_map = {tg.position: tg.ten_god for tg in db_chart.ten_gods if tg.stem_or_branch == "stem"}

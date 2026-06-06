@@ -13,7 +13,7 @@ Aplikasi mobile interpreter BaZi (四柱/八字) untuk pengguna non-praktisi. Us
 | Mobile | React Native 0.85.3, Expo 56.0.3, TypeScript, React Navigation 7 |
 | Backend | Python FastAPI, SQLAlchemy async, Supabase PostgreSQL (prod) / SQLite (dev), uvicorn |
 | Astronomi | pyswisseph (solar terms akurat) |
-| AI | SambaNova (primary: Meta-Llama-3.1-405B) + Cerebras (fallback) |
+| AI | SambaNova (primary: DeepSeek-V3-0324) + Cerebras (fallback) |
 | Build | Expo EAS (APK), Docker (backend) |
 
 ---
@@ -230,7 +230,7 @@ git push hf master:main
 - Logo: semua asset diganti dengan logo custom (sun navy+gold) — favicon, icon, android icons, splash
 - Fix: narasi tab "Hubungan" & "Kekuatan" — error lama tersimpan di DB cache tanpa prefix "ERROR:"; `is_error_narasi` diperluas mendeteksi format lama; frontend tidak lagi cache error response; tombol "↻ Coba Lagi" muncul saat narasi gagal
 - Fix: delete keinginan di web — `Alert.alert` multi-button broken di RN Web, pakai `window.confirm` (pola sama seperti Reset Profil)
-- Feat: SambaNova AI cascade — `Meta-Llama-3.1-405B-Instruct` sebagai model utama, `Meta-Llama-3.3-70B-Instruct` sebagai fallback, lalu Cerebras cascade; env var `SAMBANOVA_API_KEY`
+- Feat: SambaNova AI cascade — `DeepSeek-V3-0324` sebagai model utama, `Meta-Llama-3.3-70B-Instruct` sebagai fallback, lalu Cerebras cascade; env var `SAMBANOVA_API_KEY`
 - Feat: CalendarScreen — "Hubungan dengan Chartmu" kini dilengkapi narasi AI (POST `/calendar/narasi`); auto-fetch saat ganti tanggal, reset otomatis, retry button jika error; tidak di-cache DB
 - Fix: WishScreen — keinginan hilang saat refresh karena `ctxLoading` belum dicek; sekarang nunggu context selesai load sebelum fetch/render
 - Fix: cascade AI di `services/cerebras.py` — semua error provider selain 400/422 sekarang lanjut ke model berikutnya, jadi SambaNova auth/model error tetap fallback ke Cerebras

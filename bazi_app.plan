@@ -1,0 +1,1159 @@
+# BaZi App — Development Plan
+
+Dokumen ini adalah roadmap pengembangan menyeluruh, mencakup semua perbaikan UX, fitur baru, dan teknis yang perlu dikerjakan. Disusun dari prioritas tertinggi ke terendah. Setiap item menyertakan konteks masalah, file yang perlu diubah, dan detail implementasi.
+
+---
+
+## Konteks Proyek (Ringkasan untuk AI Agent)
+
+**Stack:**
+- Frontend: React Native (Expo 56), TypeScript, di-deploy ke Vercel → `https://bazi-app-two.vercel.app`
+- Backend: Python FastAPI + SQLAlchemy async, di-deploy ke HuggingFace Spaces → `https://samsam010-bazi-backend.hf.space`
+- DB: Supabase PostgreSQL (transaction pooler port 6543, `statement_cache_size=0`)
+- AI: SambaNova cascade → Cerebras cascade (lihat `backend/app/services/cerebras.py`)
+  - Cascade order: DeepSeek-V3-0324 (SambaNova) → Meta-Llama-3.3-70B (SambaNova) → qwen-3-235b → gpt-oss-120b → zai-glm-4.7 → llama3.1-8b (semua Cerebras)
+  - API key env vars: `SAMBANOVA_API_KEY`, `CEREBRAS_API_KEY`
+
+**Struktur file utama:**
+```
+bazi-app/
+  App.tsx                          — navigation root, BottomTabNavigator
+  src/
+    theme.ts                       — warna (C.bg, C.gold, dll), STEM_COLOR, dll
+    context/ChartContext.tsx        — chartId + timezone via AsyncStorage
+    screens/
+      ProfileScreen.tsx            — onboarding + profile view + narasi
+      CalendarScreen.tsx           — kalender grid + pilar hari + interaksi
+      WishScreen.tsx               — keinginan + analisis AI
+    components/
+      InfoModal.tsx                — shared modal overlay (title/subtitle/body)
+backend/
+  main.py                          — FastAPI app, lifespan DB init
+  app/
+    api/router.py                  — semua endpoint
+    engine/calculator.py           — kalkulasi BaZi
+    engine/tables.py               — konstanta stems/branches
+    engine/interactions.py         — clash/combination/harm/penalty
+    services/cerebras.py           — AI prompts + cascade call
+    models/domain.py               — ORM models
+    models/schemas.py              — Pydantic schemas
+```
+
+**Tema warna (theme.ts):**
+- Background: `#08101F` (navy gelap)
+- Surface: `#0D1C38`
+- Gold: `#C8A83C` — aksen utama
+- Text: `#EDE8DB`
+- Red: `#E05252`, Teal: `#2EC4B0`, Amber: `#E09030`
+
+**State persistence:**
+- `chartId` dan `timezone` disimpan di AsyncStorage via `ChartContext`
+- Hanya satu profil per device (belum multi-user)
+- Narasi AI di-cache di DB (`CachedNarasi` table, key = section name)
+- Wish analisis di-cache di kolom `wishes.analysis`
+
+---
+
+## PRIORITAS 1 — Bug & UX Kritis
+
+Item-item ini menyebabkan pengguna mendapat informasi salah atau tidak bisa menggunakan fitur utama.
+
+---
+
+### P1-A. Badge "Estimasi" pada Pilar Jam ketika Jam Tidak Diketahui
+
+**Masalah:** Saat user toggle "Jam Tidak Diketahui", backend tetap menghitung pilar jam dari tengah hari (12:00). Di profile view, pilar 時/JAM tampil identik dengan pilar lain tanpa penanda apapun. AI narasi dikirim data pilar jam ini sebagai fakta, padahal hanya estimasi. Pilar jam mempengaruhi analisis karakter, karir, dan "warisan" — data palsu masuk ke AI.
+
+**File yang diubah:**
+1. `backend/app/models/domain.py` — tambah kolom `hour_unknown BOOLEAN DEFAULT FALSE` di `BaZiChart`
+2. `backend/app/models/schemas.py` — tambah field `hour_unknown: bool = False` di `ChartCalculateRequest` dan `ChartResponse`
+3. `backend/app/api/router.py` — simpan `hour_unknown` dari request ke DB; sertakan di response
+4. `backend/main.py` — tambah `ALTER TABLE bazi_charts ADD COLUMN IF NOT EXISTS hour_unknown BOOLEAN DEFAULT FALSE` di lifespan migration
+5. `bazi-app/src/screens/ProfileScreen.tsx` — tampilkan badge "~" atau label "estimasi" di kolom 時/JAM jika `chartData.hour_unknown === true`; tambah note di bawah pillar grid
+6. `hf-deploy/backend/` — sync semua perubahan backend
+
+**Detail implementasi frontend (ProfileScreen):**
+```tsx
+// Di bagian pillar grid, di dalam map(['year','month','day','hour']):
+const isHourEstimated = p === 'hour' && chartData?.hour_unknown;
+
+// Di render pillar column:
+{isHourEstimated && (
+  <View style={styles.estimatedBadge}>
+    <Text style={styles.estimatedBadgeText}>~</Text>
+  </View>
+)}
+
+// Style baru:
+estimatedBadge: {
+  backgroundColor: C.amber + '33',
+  borderRadius: 4,
+  paddingHorizontal: 4,
+  paddingVertical: 1,
+  marginTop: 2,
+},
+estimatedBadgeText: { fontSize: 8, color: C.amber, fontWeight: '900' },
+```
+
+Di bawah pillar grid (kondisional):
+```tsx
+{chartData?.hour_unknown && (
+  <Text style={styles.hourEstimatedNote}>
+    ⚠ Pilar Jam dihitung dari tengah hari — akurasi terbatas untuk analisis masa tua & warisan
+  </Text>
+)}
+```
+
+**Ekstensi — Estimasi Waktu Kultural (Subuh/Maghrib):**
+
+Banyak orang Indonesia tidak tahu jam lahir persis tapi tahu referensi waktu sholat / waktu hari. Daripada hanya toggle "Jam Tidak Diketahui" yang default ke tengah hari, sediakan dropdown time guesser berbasis budaya. Ini jauh lebih akurat dan membumi.
+
+Ganti toggle "Jam Tidak Diketahui" menjadi tiga opsi:
+1. **Aku tahu jam pasti** → tampilkan input HH:MM (perilaku saat ini)
+2. **Perkiraan waktu** → tampilkan dropdown kultural:
+   - Dini Hari / Tahajud (00:00–03:59) → kirim `02:00`, Pilar Jam: 丑 Chou
+   - Subuh / Fajar (04:00–05:59) → kirim `05:00`, Pilar Jam: 卯 Mao
+   - Pagi / Duha (06:00–10:59) → kirim `08:00`, Pilar Jam: 辰 Chen
+   - Tengah Hari / Dzuhur (11:00–13:59) → kirim `12:00`, Pilar Jam: 午 Wu
+   - Sore / Ashar (14:00–17:59) → kirim `16:00`, Pilar Jam: 申 Shen
+   - Senja / Maghrib (18:00–19:59) → kirim `19:00`, Pilar Jam: 戌 Xu
+   - Malam / Isya (20:00–23:59) → kirim `21:00`, Pilar Jam: 亥 Hai
+3. **Benar-benar tidak tahu** → kirim `null` (tetap default tengah hari, badge ~ tetap tampil)
+
+```tsx
+type TimeMode = 'exact' | 'approximate' | 'unknown';
+const [timeMode, setTimeMode] = useState<TimeMode>('exact');
+const [approxTime, setApproxTime] = useState<string>('');
+
+const APPROX_TIMES = [
+  { label: 'Dini Hari / Tahajud', sub: '00:00–03:59', value: '02:00', pillar: '丑' },
+  { label: 'Subuh / Fajar',       sub: '04:00–05:59', value: '05:00', pillar: '卯' },
+  { label: 'Pagi / Duha',         sub: '06:00–10:59', value: '08:00', pillar: '辰' },
+  { label: 'Tengah Hari / Dzuhur',sub: '11:00–13:59', value: '12:00', pillar: '午' },
+  { label: 'Sore / Ashar',        sub: '14:00–17:59', value: '16:00', pillar: '申' },
+  { label: 'Maghrib / Senja',     sub: '18:00–19:59', value: '19:00', pillar: '戌' },
+  { label: 'Malam / Isya',        sub: '20:00–23:59', value: '21:00', pillar: '亥' },
+];
+
+// Di handleCalculate:
+const finalTime = timeMode === 'exact' ? `${time}:00`
+                : timeMode === 'approximate' ? `${approxTime}:00`
+                : null;
+const isHourUnknown = timeMode === 'unknown' || (timeMode === 'approximate'); // approximate juga dapat badge ~
+```
+
+**Detail implementasi backend (router.py):**
+```python
+# Di endpoint POST /charts/calculate:
+db_chart.hour_unknown = request.birth_time is None
+
+# Di ChartResponse, tambah field:
+hour_unknown: bool = False
+
+# Di _build_chart_response dan _build_chart_dict, sertakan:
+"hour_unknown": db_chart.hour_unknown,
+```
+
+---
+
+### P1-B. Gender Tidak Diisi → Luck Pillars Hilang Tanpa Penjelasan
+
+**Masalah:** Gender berlabel "(opsional)" di form onboarding. Pengguna yang skip tidak mendapat Luck Pillars di profile mereka, tapi tidak ada penjelasan kenapa section itu hilang. Mereka pikir ada bug.
+
+**Solusi dua lapis:**
+1. Di form onboarding: ubah label dari "(untuk Luck Pillars)" menjadi label yang lebih menekan — tambah tanda visual jika belum dipilih saat tombol "Hitung Chart" ditekan
+2. Di profile view: jika `luckPillars.length === 0` dan tidak ada tanda error, tampilkan placeholder card yang menjelaskan kenapa dan menawarkan solusi
+
+**File yang diubah:**
+- `bazi-app/src/screens/ProfileScreen.tsx`
+
+**Detail implementasi:**
+
+Di `handleCalculate`, tambah konfirmasi soft jika gender belum dipilih:
+```tsx
+if (!gender) {
+  // Tampilkan konfirmasi, bukan alert error
+  if (Platform.OS === 'web') {
+    const ok = window.confirm(
+      'Jenis kelamin belum dipilih.\n\nTanpa ini, Luck Pillars (大運) tidak akan dihitung. Lanjutkan tanpa Luck Pillars?'
+    );
+    if (!ok) return;
+  } else {
+    // Gunakan Alert dengan pilihan Lanjutkan / Batalkan
+  }
+}
+```
+
+Di profile view, setelah section Luck Pillars tidak ada:
+```tsx
+{luckPillars.length === 0 && (
+  <View style={styles.lpMissingCard}>
+    <Text style={styles.lpMissingTitle}>大運 Luck Pillars tidak tersedia</Text>
+    <Text style={styles.lpMissingDesc}>
+      Jenis kelamin diperlukan untuk menghitung siklus 10 tahunan.
+      Reset profil dan isi ulang dengan data lengkap untuk mengaktifkan fitur ini.
+    </Text>
+  </View>
+)}
+```
+
+---
+
+### P1-C. Kalender: AI Narasi Jangan Tembak untuk Tanggal Lampau
+
+**Masalah:** `loadCalNarasi` dipanggil setiap kali user tap tanggal manapun, termasuk tanggal yang sudah lewat. AI menghasilkan saran taktis "hari ini hindari konfrontasi..." untuk tanggal kemarin — tidak actionable sama sekali. User yang browsing sejarah mendapat konten useless.
+
+**Solusi:** Bedakan tanggal lampau vs hari ini vs masa depan:
+- Masa depan (≥ besok): tetap generate AI narasi (perencanaan ke depan)
+- Hari ini: tetap generate AI narasi (fitur utama)
+- Lampau (≤ kemarin): jangan auto-generate; tampilkan tombol "Lihat Pembacaan Retrospektif" yang kalau diklik mengirim request dengan konteks "tanggal lampau"
+
+**File yang diubah:**
+- `bazi-app/src/screens/CalendarScreen.tsx`
+- `backend/app/services/cerebras.py` — ubah `TIME_SYSTEM_PROMPT` untuk mengakomodasi context retrospektif
+
+**Detail implementasi (CalendarScreen.tsx):**
+```tsx
+// Setelah dayData berhasil dimuat:
+const isPastDate = selectedDate < todayStr;
+const isFutureOrToday = selectedDate >= todayStr;
+
+// Di loadDayData:
+if (chartId && isFutureOrToday) {
+  loadCalNarasi(dateStr); // auto-load
+} else {
+  setCalNarasi('');        // reset narasi, tampilkan tombol manual
+}
+
+// Di render, di bawah interactions:
+{chartId && isPastDate && !calNarasi && !calNarasiLoading && (
+  <TouchableOpacity
+    style={styles.retroBtn}
+    onPress={() => loadCalNarasi(selectedDate)}
+  >
+    <Text style={styles.retroBtnText}>↻ Baca Energi Hari Itu</Text>
+  </TouchableOpacity>
+)}
+```
+
+**Detail implementasi (cerebras.py) — tambah context ke TIME_SYSTEM_PROMPT:**
+```
+Jika tanggal yang dianalisis sudah lewat: frame analisis sebagai retrospektif ("pada tanggal tersebut, kecenderungan energinya adalah..."), bukan forward-looking.
+```
+
+---
+
+### P1-D. Initial Tab Sesuai Status User
+
+**Masalah:** App selalu buka di tab Kalender (tab pertama, `App.tsx` baris 16). User baru yang belum punya chart mendarat di kalender — melihat data pilar hari ini yang menarik, tapi instruksi untuk buat profil hanya muncul di bawah setelah scroll dan loading selesai. Banyak user baru tidak menemukan onboarding.
+
+**Solusi:** Jika `!chartId` saat app pertama buka, navigasi otomatis ke tab Profil.
+
+**File yang diubah:**
+- `bazi-app/App.tsx`
+- `bazi-app/src/context/ChartContext.tsx` — ChartContext sudah expose `loading` dan `chartId`
+
+**Detail implementasi (App.tsx):**
+```tsx
+import { useEffect, useRef } from 'react';
+import { useChart } from './src/context/ChartContext';
+import { useNavigationContainerRef } from '@react-navigation/native';
+
+// Di dalam komponen App, wrap navigator:
+function AppNavigator() {
+  const { chartId, loading } = useChart();
+  const navRef = useRef(null);
+  const hasNavigated = useRef(false);
+
+  useEffect(() => {
+    if (!loading && !chartId && !hasNavigated.current) {
+      hasNavigated.current = true;
+      // Navigate ke tab Profil setelah navigator mount
+      setTimeout(() => {
+        navRef.current?.navigate('Profil');
+      }, 100);
+    }
+  }, [loading, chartId]);
+
+  return (
+    <Tab.Navigator ref={navRef} ...>
+      {/* tabs */}
+    </Tab.Navigator>
+  );
+}
+```
+
+---
+
+### P1-E. Auto-Load Analisis Lengkap Setelah Chart Pertama Kali Dihitung
+
+**Masalah:** Setelah user selesai onboarding dan chart berhasil dihitung, mereka melihat semua data teknis (pilar, luck pillars, dll.) tapi section "INTERPRETASI" hanya menampilkan tombol pasif. User awam tidak tahu bahwa tombol itu memicu analisis AI. Banyak yang meninggalkan app tanpa pernah tap tombol itu.
+
+**Solusi:** Setelah `handleCalculate` sukses, otomatis panggil `generateNarasi('full_analysis')` dengan delay kecil — seolah app langsung bekerja menganalisis untuk user.
+
+**File yang diubah:**
+- `bazi-app/src/screens/ProfileScreen.tsx`
+
+**Detail implementasi:**
+```tsx
+// Di handleCalculate, setelah setChartData(res.data):
+await setChart(res.data.id, tz);
+setChartData(res.data);
+setCachedSections({});
+// Auto-trigger analisis setelah chart pertama dihitung
+setTimeout(() => generateNarasi('full_analysis'), 500);
+```
+
+Tambah juga hint visual di atas tombol narasi untuk user yang datang kembali setelah sesi pertama:
+```tsx
+{Object.keys(cachedSections).length === 0 && (
+  <Text style={styles.narasiHint}>
+    Tap untuk membaca interpretasi BaZi chart-mu
+  </Text>
+)}
+```
+
+---
+
+### P1-F. Error Messages Lebih User-Friendly
+
+**Masalah:** Teks error seperti "Gagal memuat profil. Cek koneksi backend." dan "Pastikan backend berjalan di http://..." adalah bahasa developer, bukan pengguna. Pengguna produksi tidak tahu apa itu "backend".
+
+**File yang diubah:**
+- `bazi-app/src/screens/ProfileScreen.tsx`
+- `bazi-app/src/screens/CalendarScreen.tsx`
+- `bazi-app/src/screens/WishScreen.tsx`
+
+**Penggantian teks:**
+```
+"Cek koneksi backend." → "Periksa koneksi internet dan coba lagi."
+"Pastikan backend berjalan di {API_URL}" → "Tidak dapat terhubung ke server. Coba lagi beberapa saat."
+"Gagal memuat profil. Cek koneksi backend." → "Profil tidak dapat dimuat. Periksa koneksi internet."
+"Gagal memuat data. Pastikan backend berjalan." → "Data tidak dapat dimuat. Periksa koneksi internet."
+"Tidak dapat menghitung chart." → "Tidak dapat membuat chart. Periksa koneksi internet dan coba lagi."
+```
+
+---
+
+## PRIORITAS 2 — Fitur Penting (UX Improvement)
+
+Item-item ini signifikan tapi tidak menyebabkan data salah.
+
+---
+
+### P2-A. Tambah Timezone Internasional
+
+**Masalah:** Hanya ada 3 opsi timezone (WIB/WITA/WIT). Pengguna Indonesia yang lahir di luar negeri (TKI di Malaysia/Singapura, atau yang lahir di Eropa/Amerika) tidak bisa input timezone yang benar sehingga pilar dihitung salah.
+
+**Solusi:** Expand TIMEZONES ke 3 grup: Indonesia, Asia Tenggara, dan opsi manual.
+
+**File yang diubah:**
+- `bazi-app/src/screens/ProfileScreen.tsx`
+
+**Detail implementasi:**
+```tsx
+const TIMEZONES = [
+  // Indonesia
+  { label: 'WIB',  sub: 'Jakarta · Sumatera',     value: 'Asia/Jakarta'   },
+  { label: 'WITA', sub: 'Bali · Makassar',         value: 'Asia/Makassar'  },
+  { label: 'WIT',  sub: 'Jayapura · Papua',        value: 'Asia/Jayapura'  },
+  // Asia
+  { label: 'SGT',  sub: 'Singapura · Malaysia',    value: 'Asia/Singapore' },
+  { label: 'CST',  sub: 'Tiongkok · Taiwan · HK',  value: 'Asia/Shanghai'  },
+  { label: 'JST',  sub: 'Jepang · Korea',          value: 'Asia/Tokyo'     },
+  // International
+  { label: 'UTC',  sub: 'Universal (GMT+0)',        value: 'UTC'            },
+  { label: 'CET',  sub: 'Eropa Tengah (GMT+1/+2)', value: 'Europe/Paris'   },
+  { label: 'EST',  sub: 'Amerika Timur (GMT-5)',   value: 'America/New_York'},
+];
+```
+
+Ubah layout dari kolom tunggal menjadi grid 3 kolom (seperti gender row) agar tidak terlalu panjang secara vertikal.
+
+---
+
+### P2-B. Tombol "Hari Ini" di Kalender
+
+**Masalah:** Tidak ada shortcut kembali ke hari ini setelah user browse ke bulan lain. Harus klik `‹`/`›` berulang.
+
+**File yang diubah:**
+- `bazi-app/src/screens/CalendarScreen.tsx`
+
+**Detail implementasi:**
+```tsx
+// Tambah di sebelah kanan monthNav, conditional:
+{(viewYear !== today.getFullYear() || viewMonth !== today.getMonth()) && (
+  <TouchableOpacity
+    style={styles.todayBtn}
+    onPress={() => {
+      setViewYear(today.getFullYear());
+      setViewMonth(today.getMonth());
+      setSelectedDate(todayStr);
+      loadDayData(todayStr);
+    }}
+  >
+    <Text style={styles.todayBtnText}>Hari Ini</Text>
+  </TouchableOpacity>
+)}
+
+// Style:
+todayBtn: {
+  borderWidth: 1,
+  borderColor: C.gold,
+  borderRadius: 8,
+  paddingHorizontal: 10,
+  paddingVertical: 4,
+},
+todayBtnText: { fontSize: 12, fontWeight: '700', color: C.gold },
+```
+
+---
+
+### P2-C. Timestamp pada Analisis Keinginan
+
+**Masalah:** Analisis keinginan disimpan permanen di DB tapi tidak ada info kapan dianalisis. User yang membaca analisis setahun kemudian (saat Luck Pillar sudah berganti) tidak tahu bahwa analisis itu mungkin sudah stale.
+
+**Solusi:** Simpan `analyzed_at` di tabel `wishes`, tampilkan di UI.
+
+**File yang diubah:**
+1. `backend/app/models/domain.py` — tambah `analyzed_at: Optional[datetime]` di `Wish`
+2. `backend/app/models/schemas.py` — tambah `analyzed_at: Optional[datetime]` di `WishResponse`
+3. `backend/app/api/router.py` — di endpoint `POST /wishes/{wish_id}/analyze`, set `wish.analyzed_at = datetime.utcnow()`
+4. `backend/main.py` — tambah `ALTER TABLE wishes ADD COLUMN IF NOT EXISTS analyzed_at TIMESTAMP`
+5. `bazi-app/src/screens/WishScreen.tsx` — tampilkan "Dianalisis: {tanggal}" di bawah teks analisis
+6. `hf-deploy/backend/` — sync semua perubahan backend
+
+**Detail implementasi (WishScreen):**
+```tsx
+interface Wish {
+  id: string;
+  content: string;
+  analysis: string | null;
+  analyzed_at: string | null;  // tambah
+  created_at: string;
+}
+
+// Di dalam analysisBox, setelah teks analisis:
+{wish.analyzed_at && (
+  <Text style={styles.analyzedAtText}>
+    Dianalisis {formatDate(wish.analyzed_at)}
+    {/* Warn jika lebih dari 365 hari */}
+    {(Date.now() - new Date(wish.analyzed_at).getTime()) > 365*24*60*60*1000
+      ? ' · mungkin sudah tidak relevan dengan dekade saat ini'
+      : ''}
+  </Text>
+)}
+
+analyzedAtText: { fontSize: 11, color: C.textFaint, marginTop: 8, fontStyle: 'italic' },
+```
+
+---
+
+### P2-D. Auto-Scroll ke Hasil Narasi Profil
+
+**Masalah:** Setelah user tap "Analisis Lengkap", loading selesai, tapi teks narasi muncul di bawah semua section profil. Jika user tidak scroll, mereka tidak sadar hasil sudah muncul.
+
+**File yang diubah:**
+- `bazi-app/src/screens/ProfileScreen.tsx`
+
+**Detail implementasi:**
+```tsx
+// Tambah ref ke ScrollView dan ke section narasi
+const scrollRef = useRef<ScrollView>(null);
+const narasiBoxY = useRef<number>(0);
+
+// Di generateNarasi, setelah setNarasi(text):
+setTimeout(() => {
+  scrollRef.current?.scrollTo({ y: narasiBoxY.current - 20, animated: true });
+}, 100);
+
+// Di ScrollView, tambah ref:
+<ScrollView ref={scrollRef} ...>
+
+// Di narasi box View, tambah onLayout:
+<View
+  onLayout={(e) => { narasiBoxY.current = e.nativeEvent.layout.y; }}
+  style={[styles.narasiBox, ...]}>
+```
+
+---
+
+### P2-E. Edit Keinginan
+
+**Masalah:** Setelah keinginan disimpan, tidak ada cara mengedit teks. Typo atau keinginan yang ingin diubah sedikit memaksa user hapus dan tulis ulang — termasuk kehilangan analisis yang sudah ada.
+
+**Solusi:** Tambah mode edit inline di dalam wish card.
+
+**File yang diubah:**
+1. `backend/app/api/router.py` — tambah endpoint `PATCH /wishes/{wish_id}` yang update `content`
+2. `backend/app/models/schemas.py` — tambah `WishUpdateRequest(content: str)`
+3. `bazi-app/src/screens/WishScreen.tsx` — tambah tombol "Edit" di footer, inline TextInput saat edit mode
+
+**Detail implementasi (WishScreen):**
+```tsx
+const [editingId, setEditingId] = useState<string | null>(null);
+const [editText, setEditText]   = useState('');
+
+const startEdit = (wish: Wish) => {
+  setEditingId(wish.id);
+  setEditText(wish.content);
+};
+
+const saveEdit = async (wish: Wish) => {
+  const text = editText.trim();
+  if (!text || text === wish.content) { setEditingId(null); return; }
+  try {
+    const res = await axios.patch(`${API_URL}/wishes/${wish.id}`, { content: text });
+    setWishes(prev => prev.map(w => w.id === wish.id ? res.data : w));
+    setEditingId(null);
+  } catch {
+    Alert.alert('Gagal', 'Tidak dapat menyimpan perubahan.');
+  }
+};
+
+// Di render wish card, ganti Text content dengan:
+{editingId === wish.id ? (
+  <TextInput
+    style={styles.editInput}
+    value={editText}
+    onChangeText={setEditText}
+    multiline
+    autoFocus
+  />
+) : (
+  <Text style={styles.wishContent}>{wish.content}</Text>
+)}
+
+// Di footer, tambah:
+{expandedId === wish.id && editingId !== wish.id && (
+  <TouchableOpacity onPress={() => startEdit(wish)} style={styles.footerBtn}>
+    <Text style={styles.footerBtnText}>Edit</Text>
+  </TouchableOpacity>
+)}
+{editingId === wish.id && (
+  <TouchableOpacity onPress={() => saveEdit(wish)} style={styles.footerBtn}>
+    <Text style={[styles.footerBtnText, { color: C.gold }]}>Simpan</Text>
+  </TouchableOpacity>
+)}
+```
+
+---
+
+### P2-F. Guided Intent — Chips Kategori + Panduan Input Keinginan
+
+**Masalah:** Placeholder "Aku ingin…" terlalu generik. Saat seseorang sedang stres atau cemas, kotak teks kosong bisa terasa mengintimidasi — mereka sulit mengartikulasikan masalah secara spesifik. Input abstrak ("Aku ingin sukses") membuat AI kesulitan menemukan korelasi Ten Gods yang tepat.
+
+**Solusi:** Tampilkan chip/pill kategori sebagai pancingan empati. Saat user tap kategori, placeholder teks berubah menjadi pertanyaan spesifik yang relevan. Ini memandu tanpa memaksa — user masih bisa tulis bebas, tapi diberi arah.
+
+**File yang diubah:**
+- `bazi-app/src/screens/WishScreen.tsx`
+
+**Detail implementasi:**
+```tsx
+const INTENT_CHIPS = [
+  {
+    label: '💼 Karier & Bisnis',
+    placeholder: 'Ceritakan: Apakah ingin naik jabatan, ganti pekerjaan, mulai bisnis, atau menyelesaikan konflik di tempat kerja?',
+  },
+  {
+    label: '❤️ Hubungan',
+    placeholder: 'Ceritakan: Apakah soal pasangan, mencari jodoh, konflik keluarga, atau hubungan yang membebani?',
+  },
+  {
+    label: '💰 Keuangan',
+    placeholder: 'Ceritakan: Apakah ragu berinvestasi, ingin bebas hutang, gaji tidak cukup, atau peluang finansial yang sedang dipertimbangkan?',
+  },
+  {
+    label: '🧘 Ketenangan Batin',
+    placeholder: 'Ceritakan: Apakah merasa stagnan, kehilangan arah, kelelahan mental, atau mencari makna yang lebih dalam?',
+  },
+];
+
+const [selectedChip, setSelectedChip] = useState<number | null>(null);
+
+// Placeholder dinamis berdasarkan chip terpilih:
+const activePlaceholder = selectedChip !== null
+  ? INTENT_CHIPS[selectedChip].placeholder
+  : 'Contoh: Aku ingin pindah ke karier di bidang teknologi dalam 1 tahun ini...';
+
+// Di render, sebelum TextInput:
+<ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsScroll}>
+  {INTENT_CHIPS.map((chip, idx) => (
+    <TouchableOpacity
+      key={idx}
+      style={[styles.chip, selectedChip === idx && styles.chipActive]}
+      onPress={() => setSelectedChip(prev => prev === idx ? null : idx)}
+    >
+      <Text style={[styles.chipText, selectedChip === idx && styles.chipTextActive]}>
+        {chip.label}
+      </Text>
+    </TouchableOpacity>
+  ))}
+</ScrollView>
+
+// TextInput:
+<TextInput
+  placeholder={activePlaceholder}
+  maxLength={500}
+  ...
+/>
+
+// Character counter:
+<Text style={styles.charCount}>{inputText.length}/500</Text>
+
+// Styles baru:
+chipsScroll:     { marginBottom: 10 },
+chip:            { borderWidth: 1, borderColor: C.border, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, marginRight: 8, backgroundColor: C.bg },
+chipActive:      { borderColor: C.gold, backgroundColor: C.surfaceHigh },
+chipText:        { fontSize: 12, color: C.textMuted, fontWeight: '600' },
+chipTextActive:  { color: C.goldSoft },
+charCount:       { fontSize: 11, color: C.textFaint, textAlign: 'right', marginTop: 4 },
+```
+
+---
+
+### P2-G. Konfirmasi Sebelum Analisis Ulang
+
+**Masalah:** Tombol "Analisis Ulang" langsung overwrite analisis lama tanpa warning. Analisis lama yang relevan bisa hilang secara tidak sengaja.
+
+**File yang diubah:**
+- `bazi-app/src/screens/WishScreen.tsx`
+
+**Detail implementasi:**
+```tsx
+// Ganti panggilan analyzeWish langsung dengan:
+const confirmReanalyze = (wish: Wish) => {
+  if (Platform.OS === 'web') {
+    if (window.confirm('Analisis ulang akan menggantikan hasil sebelumnya. Lanjutkan?')) {
+      analyzeWish(wish);
+    }
+    return;
+  }
+  Alert.alert(
+    'Analisis Ulang',
+    'Hasil analisis sebelumnya akan digantikan. Lanjutkan?',
+    [
+      { text: 'Batal', style: 'cancel' },
+      { text: 'Analisis Ulang', onPress: () => analyzeWish(wish) },
+    ]
+  );
+};
+```
+
+---
+
+### P2-H. Solar Term Label Font Size Lebih Besar
+
+**Masalah:** `solarTermLabel` menggunakan `fontSize: 9` — karakter Chinese 2-karakter nyaris tidak terbaca di layar kecil atau low-DPI.
+
+**File yang diubah:**
+- `bazi-app/src/screens/CalendarScreen.tsx`
+
+**Detail implementasi:**
+```tsx
+// Di StyleSheet:
+solarTermLabel: {
+  fontSize: 10,   // naik dari 9
+  color: C.gold,
+  fontWeight: '700',
+  lineHeight: 13,
+  marginTop: 1,
+},
+
+// CELL_H perlu dinaikkan dari 52 ke 56 untuk mengakomodasi:
+const CELL_H = 56;
+```
+
+---
+
+### P2-I. Life Strategy Snapshot Card
+
+**Masalah:** AI narasi profil sudah diminta memberikan "Life Strategy Snapshot" di akhir output (format: `core nature | best arena | biggest trap | long-term winning move`). Tapi teks ini terkubur di dalam blok narasi panjang 2000 token. User harus membaca semua sebelum menemukan intisarinya. Memori jangka pendek manusia terbatas — besoknya mereka sudah lupa.
+
+**Solusi:** Parse dan tampilkan "Life Strategy Snapshot" sebagai kartu terpisah yang mencolok di bagian atas profil, tepat di bawah Day Master hero card. Format ringkas, font besar, bisa dibaca dalam 5 detik.
+
+**File yang diubah:**
+- `bazi-app/src/screens/ProfileScreen.tsx`
+- `backend/app/services/cerebras.py` — pastikan `PROFILE_SYSTEM_PROMPT` konsisten mengakhiri output dengan format yang bisa di-parse
+
+**Detail implementasi:**
+
+Backend perlu memastikan snapshot selalu berada di baris terakhir dengan format yang konsisten. Update `PROFILE_SYSTEM_PROMPT`:
+```python
+# Ganti baris terakhir:
+"Tutup WAJIB dengan baris terakhir format persis ini (satu baris, diawali 'Snapshot:'):\n"
+"Snapshot: [core nature] | [best arena] | [biggest trap] | [long-term move]"
+```
+
+Frontend — parse snapshot dari narasi yang sudah di-cache:
+```tsx
+function parseSnapshot(narasi: string): string[] | null {
+  const match = narasi.match(/Snapshot:\s*(.+)/);
+  if (!match) return null;
+  return match[1].split('|').map(s => s.trim());
+}
+
+const SNAPSHOT_LABELS = ['Sifat Inti', 'Arena Terbaik', 'Jebakan Utama', 'Langkah Jangka Panjang'];
+
+// Di profile view, setelah Day Master hero card, jika narasi sudah ada di cachedSections:
+{(() => {
+  const snap = parseSnapshot(cachedSections['full_analysis'] ?? '');
+  if (!snap || snap.length < 4) return null;
+  return (
+    <View style={styles.snapshotCard}>
+      <Text style={styles.snapshotTitle}>◉ STRATEGI HIDUPMU</Text>
+      {snap.map((s, i) => (
+        <View key={i} style={styles.snapshotRow}>
+          <Text style={styles.snapshotLabel}>{SNAPSHOT_LABELS[i]}</Text>
+          <Text style={styles.snapshotValue}>{s}</Text>
+        </View>
+      ))}
+    </View>
+  );
+})()}
+
+// Styles:
+snapshotCard: {
+  backgroundColor: C.surfaceHigh,
+  borderRadius: 16,
+  padding: 16,
+  marginBottom: 20,
+  borderWidth: 1,
+  borderColor: C.gold + '55',
+},
+snapshotTitle: { fontSize: 10, fontWeight: '900', color: C.gold, letterSpacing: 1.5, marginBottom: 12 },
+snapshotRow:   { marginBottom: 8 },
+snapshotLabel: { fontSize: 10, color: C.textFaint, fontWeight: '700', letterSpacing: 0.5, marginBottom: 2 },
+snapshotValue: { fontSize: 14, color: C.text, lineHeight: 21, fontWeight: '500' },
+```
+
+---
+
+### P2-J. Annual Pillar Analysis — "Tema Tahun Ini"
+
+**Masalah:** Profil memberikan gambaran seumur hidup; kalender memberikan detail harian. Tidak ada jembatan di antaranya — analisis per tahun. Secara psikologis, manusia merencanakan hidup dalam skala tahun, bukan hari. User perlu tahu apakah 2026 secara struktural mendukung atau menantang chart mereka.
+
+**Solusi:** Tambah section "Tema Tahun Ini" di CalendarScreen (tepat di bawah month navigator) atau di ProfileScreen. Section ini menampilkan pilar tahun berjalan + interaksi dengan chart natal user + satu paragraf AI tentang tema makro tahun ini.
+
+**File yang diubah:**
+1. `backend/app/api/router.py` — tambah `GET /calendar/annual?year={year}&chart_id={id}&timezone={tz}` yang return pilar tahun + interaksi natal vs tahun + AI narasi tahunan
+2. `backend/app/services/cerebras.py` — tambah `ANNUAL_SYSTEM_PROMPT` dan fungsi `generate_annual_narasi`
+3. `bazi-app/src/screens/CalendarScreen.tsx` — tambah section "Tema Tahun Ini" di atas grid kalender, collapsed by default (tap untuk expand)
+
+**Detail implementasi (cerebras.py):**
+```python
+ANNUAL_SYSTEM_PROMPT = """Kamu adalah BaZi Strategic Analyst.
+WAJIB: framing probabilistik. BAHASA: Indonesia.
+
+Input: chart natal + pilar tahun berjalan + interaksi natal vs tahun.
+
+Analisis dalam 2 paragraf ringkas:
+1. Tema makro tahun ini — elemen dominan tahun + dampaknya ke Day Master dan Yong Shen chart
+2. Area prioritas dan area risiko berdasarkan interaksi yang ada
+
+Tutup satu kalimat: "Strategi tahun ini: [satu kalimat taktis]"
+Format: maksimal 3 paragraf pendek."""
+```
+
+**UI — Annual section di CalendarScreen:**
+```tsx
+// Di atas monthNav, tambah collapsible card:
+<TouchableOpacity
+  style={styles.annualHeader}
+  onPress={() => setAnnualExpanded(prev => !prev)}
+>
+  <Text style={styles.annualTitle}>◈ TEMA {viewYear}</Text>
+  <Text style={styles.annualChevron}>{annualExpanded ? '▲' : '▼'}</Text>
+</TouchableOpacity>
+{annualExpanded && (
+  <View style={styles.annualBody}>
+    {/* Pilar tahun + interaksi + AI narasi */}
+  </View>
+)}
+```
+
+Cache hasil per tahun di state: `annualDataCache: Record<number, AnnualData>`.
+
+---
+
+### P2-K. Privacy Blur di WishScreen
+
+**Masalah:** Tab Keinginan adalah "buku harian digital" — user mungkin menulis tentang hutang, konflik pernikahan, atau masalah pribadi. Semua daftar keinginan terpampang langsung saat tab dibuka. Jika ada orang lain yang melihat layar, privasi user terancam. Kekhawatiran ini bisa membuat user tidak mau menulis dengan jujur.
+
+**Solusi:** Tambah tombol ikon mata (👁) di header tab Keinginan. Secara default, teks keinginan di-blur. User tap untuk reveal. State disimpan in-memory saja (reset ke blur saat app ditutup).
+
+**File yang diubah:**
+- `bazi-app/src/screens/WishScreen.tsx`
+
+**Detail implementasi:**
+```tsx
+const [revealed, setRevealed] = useState(false);
+
+// Di header ScrollView, tambah tombol toggle:
+<View style={styles.screenHeader}>
+  <Text style={styles.screenTitle}>Keinginanmu</Text>
+  <TouchableOpacity onPress={() => setRevealed(r => !r)} style={styles.revealBtn}>
+    <Text style={styles.revealBtnText}>{revealed ? '🙈 Sembunyikan' : '👁 Tampilkan'}</Text>
+  </TouchableOpacity>
+</View>
+
+// Di wish card content dan analysis, wrap dengan blur:
+<Text
+  style={[
+    styles.wishContent,
+    !revealed && styles.blurredText,
+  ]}
+>
+  {wish.content}
+</Text>
+
+// Untuk blur effect (React Native):
+blurredText: {
+  color: 'transparent',
+  textShadowColor: C.textMuted,
+  textShadowOffset: { width: 0, height: 0 },
+  textShadowRadius: 8,
+},
+
+// Catatan: Untuk blur yang lebih solid di web, pakai CSS filter:
+// style={{ filter: revealed ? 'none' : 'blur(6px)', userSelect: revealed ? 'auto' : 'none' }}
+// Deteksi Platform.OS === 'web' dan inject style object berbeda
+```
+
+**Catatan UX:** State `revealed` sengaja tidak disimpan ke AsyncStorage — reset ke blur setiap kali app dibuka atau tab berganti adalah perilaku yang diinginkan untuk privasi.
+
+---
+
+### P2-L. "The Antidote" — Panduan Tindakan per Interaksi Negatif
+
+**Masalah:** Ketika user melihat label "BENTURAN ⚡" atau "HUKUMAN △" di kalender, reaksi pertama adalah takut atau cemas. Label negatif tanpa konteks menciptakan fatalisme — user merasa nasib buruk sudah ditentukan dan tidak bisa diubah.
+
+**Solusi:** Setiap tipe interaksi negatif mendapat pasangan "antidote" — panduan tindakan konkret yang mengubah energi dari ancaman menjadi peluang atau mitigasi. Tampilkan sebagai baris terpisah dengan warna teal/hijau di bawah deskripsi interaksi.
+
+**File yang diubah:**
+- `bazi-app/src/screens/CalendarScreen.tsx`
+
+**Detail implementasi:**
+
+Tambah tabel `INTERACTION_ANTIDOTE` di samping `INTERACTION_PLAIN` yang sudah ada:
+```tsx
+const INTERACTION_ANTIDOTE: Record<string, string> = {
+  clash: 'Gunakan hari ini untuk: Mengakhiri kebiasaan buruk, membersihkan hal yang sudah usang, atau membuat perubahan yang sudah lama ditunda. Hindari: Menikah, tanda tangan kontrak, atau memulai usaha baru.',
+  harm:  'Gunakan hari ini untuk: Komunikasi satu-satu yang tenang dan langsung. Hindari: Bergosip, mengambil keputusan berdasarkan informasi pihak ketiga.',
+  penalty: 'Gunakan hari ini untuk: Menyelesaikan tugas internal dan administratif. Hindari: Konfrontasi publik dan presentasi penting.',
+  self_penalty: 'Gunakan hari ini untuk: Istirahat, refleksi, meditasi, atau kegiatan kreatif solo. Hindari: Overpromise dan multitasking berat.',
+};
+
+// Di render interaction card, setelah interactPlain:
+{INTERACTION_ANTIDOTE[item.type] && (
+  <View style={styles.antidoteBox}>
+    <Text style={styles.antidoteLabel}>✦ Cara menggunakan energi ini:</Text>
+    <Text style={styles.antidoteText}>{INTERACTION_ANTIDOTE[item.type]}</Text>
+  </View>
+)}
+
+// Styles:
+antidoteBox: {
+  marginTop: 8,
+  backgroundColor: C.teal + '15',
+  borderRadius: 8,
+  padding: 10,
+  borderLeftWidth: 2,
+  borderLeftColor: C.teal,
+},
+antidoteLabel: { fontSize: 10, fontWeight: '900', color: C.teal, letterSpacing: 0.5, marginBottom: 4 },
+antidoteText:  { fontSize: 12, color: C.text, lineHeight: 19 },
+```
+
+**Catatan:** `six_combination` sengaja tidak punya antidote karena sudah positif. Energy Indicator (P2-L bekerja di level hari), sementara antidote bekerja di level per-interaksi spesifik — keduanya saling melengkapi tanpa duplikasi.
+
+---
+
+## PRIORITAS 3 — Fitur Baru Medium
+
+Item-item ini menambah nilai signifikan tapi membutuhkan lebih banyak perubahan.
+
+---
+
+### P3-A. Multi-Profil (Simpan & Switch Chart Beberapa Orang)
+
+**Masalah:** BaZi sangat sosial — pengguna ingin cek chart pasangan, anak, orang tua, atau teman. Saat ini hanya bisa menyimpan 1 chart per device. Untuk cek orang lain, user harus "Reset Profil" dan kehilangan semua keinginan (wishes) mereka.
+
+**Solusi:** Simpan array profil di AsyncStorage. Tampilkan switcher profil di tab Profil.
+
+**File yang diubah:**
+1. `bazi-app/src/context/ChartContext.tsx` — ubah storage menjadi array profil: `[{id, nickname, timezone}]`; tambah `activeProfileIdx`; expose `profiles`, `switchProfile(idx)`, `addProfile()`, `removeProfile(idx)`
+2. `bazi-app/src/screens/ProfileScreen.tsx` — tambah profile switcher di header; rename menjadi optional "nickname"
+3. Tidak ada perubahan backend (chart sudah disimpan per `chart_id` di DB)
+
+**Storage schema baru:**
+```ts
+interface StoredProfile {
+  chartId: string;
+  timezone: string;
+  nickname: string;   // "Aku", "Pasangan", "Ibu", dll
+  createdAt: string;
+}
+
+// AsyncStorage key: '@bazi_profiles' → JSON array
+// '@bazi_active_profile_idx' → number
+```
+
+**UI — Profile Switcher:**
+```
+┌─ Profile Header ─────────────────────────────┐
+│  [Aku ▾]  [+ Tambah Profil]                  │
+└──────────────────────────────────────────────┘
+```
+
+Setiap profil punya wishlist sendiri (karena wishes terikat ke `chart_id`). Switching profil = ganti `chartId` yang aktif.
+
+**Ekstensi — Relationship Dynamics AI (setelah multi-profil tersedia):**
+
+Setelah user punya minimal 2 profil tersimpan, tambah fitur "Dinamika Bersama" — membandingkan dua chart untuk memahami pola komunikasi dan interaksi energi antar orang. Bukan matchmaking (itu gimmick), tapi panduan psikologis praktis: bagaimana cara terbaik berkomunikasi, area clash yang perlu diwaspadai, dan kekuatan sinergi.
+
+**Endpoint baru:** `POST /charts/compare` — terima dua `chart_id`, return interaksi antar pilar (terutama Day Master vs Day Master dan Year Branch) + AI narasi dinamika.
+
+**Prompt baru (cerebras.py):**
+```python
+RELATIONSHIP_SYSTEM_PROMPT = """Kamu adalah BaZi Relationship Analyst.
+WAJIB: framing probabilistik. BAHASA: Indonesia.
+DILARANG: prediksi kecocokan, skor jodoh, atau klaim "kalian ditakdirkan".
+
+Input: dua chart (chart_a dan chart_b, masing-masing dengan Day Master, Ge Ju, Yong Shen).
+
+Analisis:
+1. Dinamika Day Master — bagaimana energi A bereaksi terhadap energi B secara struktural
+2. Area sinergi — dimana keduanya saling memperkuat
+3. Area gesekan — dimana energi keduanya cenderung bertabrakan
+4. Panduan komunikasi — cara praktis A berkomunikasi dengan B (dan sebaliknya)
+
+Format: 3 paragraf ringkas. TIDAK ada skor, TIDAK ada "cocok/tidak cocok"."""
+```
+
+**UI:** Di profile view saat profil aktif, tambah tombol "Bandingkan dengan [nama profil lain]" yang membuka ComparisonSheet.
+
+---
+
+### P3-B. Wish Analysis — Timing Terbaik Berdasarkan Kalender
+
+**Masalah:** Analisis keinginan hanya memberi jawaban struktural ("alignment tinggi/sedang/rendah"). User ingin tahu KAPAN waktu terbaik untuk bertindak — bulan apa yang energinya mendukung keinginan tersebut.
+
+**Solusi:** Setelah analisis tersimpan, tambah tombol "Kapan Waktu Terbaik?" yang memanggil endpoint baru. Backend mengambil 3-6 bulan ke depan, cek solar term dan pilar bulan yang paling selaras dengan Yong Shen chart untuk keinginan ini, lalu rekomendasikan window waktu.
+
+**File yang diubah:**
+1. `backend/app/services/cerebras.py` — tambah `generate_wish_timing(chart_data, wish_content, upcoming_months)`
+2. `backend/app/api/router.py` — tambah `GET /wishes/{wish_id}/timing?chart_id=`
+3. `bazi-app/src/screens/WishScreen.tsx` — tambah tombol "Kapan Waktu Terbaik?" setelah analisis tersimpan
+
+**Prompt tambahan (cerebras.py):**
+```python
+WISH_TIMING_PROMPT = """...
+Berdasarkan chart BaZi dan keinginan berikut, identifikasi window waktu dalam 6 bulan ke depan yang paling kondusif untuk bertindak.
+Gunakan pilar bulan yang tersedia dan selaraskan dengan Yong Shen chart.
+Output: max 2 kalimat per bulan yang relevan, tutup dengan satu kalimat "Bulan terbaik untuk mulai: ..."
+"""
+```
+
+---
+
+### P3-C. Pilar Jam di Kalender
+
+**Masalah:** CalendarScreen hanya tampilkan Year/Month/Day pillars. Tidak ada Hour pillar. Untuk user yang ingin tahu energi spesifik suatu jam (misal sebelum meeting penting), ini gap.
+
+**Solusi:** Tambah "Pilar Jam Saat Ini" sebagai section terpisah di bawah pilar harian, yang update otomatis setiap jam (atau manual refresh). Hanya tampil untuk tanggal hari ini.
+
+**File yang diubah:**
+1. `backend/app/api/router.py` — endpoint `/calendar/current` sudah ada; pastikan juga return `hour` pillar di `current_pillars`
+2. `bazi-app/src/screens/CalendarScreen.tsx` — tampilkan hour pillar di bawah Year/Month/Day saat `isToday`
+
+---
+
+### P3-D. Special Stars / 神煞 (Fase 3A dari Roadmap Lama)
+
+**Masalah:** Chart BaZi klasik memasukkan "Deity Stars" atau Shen Sha yang memberikan karakter tambahan. Lima yang paling relevan dan mudah dihitung: Gui Ren (Noble People 贵人), Tao Hua (Peach Blossom 桃花), Yi Ma (Sky Horse 驿马), Wen Chang (Intelligence 文昌), dan Gu Chen/Gua Su (Solitary Stars 孤辰寡宿).
+
+**File yang diubah:**
+1. `backend/app/engine/tables.py` — tambah lookup tables untuk 5 special stars
+2. `backend/app/engine/calculator.py` — tambah `get_special_stars(year_stem, day_stem, year_branch, day_branch)`
+3. `backend/app/api/router.py` — sertakan `special_stars` di response chart
+4. `backend/app/models/schemas.py` — tambah `special_stars` field
+5. `bazi-app/src/screens/ProfileScreen.tsx` — tambah section "神煞 Special Stars" dengan InfoModal per star
+6. `bazi-app/src/screens/ProfileScreen.tsx` — tambah entry di `TERM_EXPLANATIONS`
+
+**Tabel referensi (tables.py):**
+```python
+# Gui Ren (Noble People) — berdasarkan Day Stem
+GUI_REN = {
+  '甲': ['丑', '未'], '乙': ['子', '申'], '丙': ['亥', '酉'],
+  '丁': ['亥', '酉'], '戊': ['丑', '未'], '己': ['子', '申'],
+  '庚': ['丑', '未'], '辛': ['寅', '午'], '壬': ['卯', '巳'],
+  '癸': ['卯', '巳'],
+}
+# Tao Hua (Peach Blossom) — berdasarkan Year/Day Branch group
+TAO_HUA = { '申子辰': '酉', '寅午戌': '卯', '亥卯未': '子', '巳酉丑': '午' }
+# Yi Ma (Sky Horse) — berdasarkan Year/Day Branch group
+YI_MA = { '申子辰': '寅', '亥卯未': '巳', '寅午戌': '申', '巳酉丑': '亥' }
+# Wen Chang — berdasarkan Day Stem
+WEN_CHANG = {
+  '甲': '巳', '乙': '午', '丙': '申', '丁': '酉',
+  '戊': '申', '己': '酉', '庚': '亥', '辛': '子',
+  '壬': '寅', '癸': '卯',
+}
+```
+
+---
+
+### P3-E. 12 Life Stages / 十二运星 (Fase 3B dari Roadmap Lama)
+
+**Masalah:** Setiap branch memiliki kualitas energi berbeda untuk Day Master — mulai dari 长生 (Tumbuh) hingga 墓 (Makam). Ini sangat relevan untuk membaca kualitas setiap Luck Pillar.
+
+**File yang diubah:**
+1. `backend/app/engine/tables.py` — tambah tabel `LIFE_STAGE_SEQUENCE` dan `LIFE_STAGE_START`
+2. `backend/app/engine/calculator.py` — tambah `get_life_stage(day_stem, branch)`
+3. `backend/app/api/router.py` — sertakan `life_stage` per pilar di response
+4. `bazi-app/src/screens/ProfileScreen.tsx` — tampilkan stage di bawah setiap pilar di pillar grid; tampilkan juga di setiap Luck Pillar card
+
+**Tabel referensi:**
+```python
+LIFE_STAGES = ['长生','沐浴','冠带','临官','帝旺','衰','病','死','墓','绝','胎','养']
+# LIFE_STAGE_START[day_stem] = branch pertama dari urutan life stage
+LIFE_STAGE_START = {
+  '甲': '亥', '乙': '午', '丙': '寅', '丁': '酉',
+  '戊': '寅', '己': '酉', '庚': '巳', '辛': '子',
+  '壬': '申', '癸': '卯',
+}
+```
+
+---
+
+## PRIORITAS 4 — Nice to Have
+
+Item-item ini meningkatkan kualitas tapi bukan blocker.
+
+---
+
+### P4-A. Share / Export Chart
+
+User ingin berbagi chart mereka ke teman atau menyimpan sebagai screenshot yang rapi.
+
+**Opsi implementasi:**
+- Web: `window.print()` dengan CSS `@media print` untuk tampilan bersih
+- Native: `expo-sharing` + `react-native-view-shot` untuk capture ScrollView sebagai gambar
+
+**File baru:**
+- `bazi-app/src/screens/ProfileScreen.tsx` — tambah tombol "Bagikan Chart" di atas reset button
+
+---
+
+### P4-B. Notifikasi Hari Lucky
+
+Push notification setiap pagi yang memberitahu status energi hari ini berdasarkan chart user.
+
+**Dependencies baru:** `expo-notifications`, `expo-task-manager`
+
+**Backend:** endpoint baru `GET /calendar/energy-summary?chart_id=&date=` yang return label singkat tanpa AI (rule-based dari `getEnergyStatus`)
+
+**Kompleksitas:** Tinggi — butuh permission notifikasi, background task, dan backend scheduling. Kandidat untuk versi mendatang.
+
+---
+
+### P4-C. Unit Tests Engine Calculator
+
+**Masalah:** Tidak ada unit test untuk `calculator.py`. Setiap perubahan engine berisiko regresi tak terdeteksi.
+
+**File baru:**
+- `backend/tests/test_calculator.py`
+
+**Test cases minimum:**
+```python
+# Test anchor pilar hari — Jan 1 2000 harus 戊午
+# Test pilar bulan — Li Chun 2024 sebagai boundary
+# Test pilar tahun — boundary Li Chun
+# Test Ten Gods — verifikasi semua 10 kombinasi
+# Test Luck Pillars — verifikasi arah maju/mundur per gender × polaritas
+# Test Kong Wang — verifikasi mapping 60 jiazi
+```
+
+---
+
+### P4-D. Alembic Migrations
+
+**Masalah:** Saat ini pakai `create_all()` + inline `ALTER TABLE` di lifespan. Tidak ada version control untuk schema DB. Rawan inkonsistensi antara local, staging, dan prod.
+
+**Implementasi:**
+```
+backend/
+  alembic/
+    env.py
+    versions/
+      0001_initial_schema.py
+      0002_add_gender_ge_ju.py
+      ...
+  alembic.ini
+```
+
+---
+
+### P4-E. Onboarding Tutorial Singkat
+
+Untuk user yang pertama kali buka app, tampilkan 3 slide onboarding sebelum form (swipeable):
+1. "BaZi — Peta Energi Kelahiranmu" + ilustrasi 4 pilar
+2. "Apa yang Akan Kamu Dapat" + screenshots 3 fitur
+3. "Interpretasi adalah Kecenderungan, Bukan Ramalan" + disclaimer
+
+**Implementasi:** Modal fullscreen dengan FlatList horizontal + indicator dots. Tampil sekali saja (flag di AsyncStorage).
+
+---
+
+## Ringkasan Status & Urutan Eksekusi
+
+```
+── PRIORITAS 1 — Bug & UX Kritis ─────────────────────────────────────────────
+P1-A  Pilar Jam — badge ~ + Estimasi Waktu Kultural (Subuh/Maghrib)  ★★★★★  Belum
+P1-B  Gender → konfirmasi + Luck Pillars missing card                ★★★★★  Belum
+P1-C  Kalender AI — skip/retroaktif untuk tanggal lampau             ★★★★★  Belum
+P1-D  Initial tab ke Profil untuk user baru                          ★★★★☆  Belum
+P1-E  Auto-load Analisis Lengkap setelah chart pertama               ★★★★☆  Belum
+P1-F  Error messages user-friendly (hapus kata "backend")            ★★★☆☆  Belum
+
+── PRIORITAS 2 — UX Improvement ──────────────────────────────────────────────
+P2-A  Timezone internasional (SGT, CST, UTC, EST)                    ★★★★☆  Belum
+P2-B  Tombol "Hari Ini" di kalender                                  ★★★☆☆  Belum
+P2-C  Timestamp analisis keinginan + staleness warning               ★★★☆☆  Belum
+P2-D  Auto-scroll ke hasil narasi profil                             ★★★☆☆  Belum
+P2-E  Edit keinginan (inline edit + PATCH endpoint)                  ★★★☆☆  Belum
+P2-F  Guided Intent — chips kategori + placeholder dinamis           ★★★☆☆  Belum
+P2-G  Konfirmasi sebelum Analisis Ulang                              ★★☆☆☆  Belum
+P2-H  Solar term font size naik ke 10px, CELL_H ke 56               ★★☆☆☆  Belum
+P2-I  Life Strategy Snapshot Card (parse + tampilkan di atas profil) ★★★★☆  Belum
+P2-J  Annual Pillar Analysis — "Tema Tahun Ini" di kalender          ★★★★☆  Belum
+P2-K  Privacy Blur di WishScreen (toggle tampilkan/sembunyikan)      ★★★☆☆  Belum
+P2-L  "The Antidote" — panduan tindakan per interaksi negatif        ★★★★☆  Belum
+
+── PRIORITAS 3 — Fitur Baru Medium ───────────────────────────────────────────
+P3-A  Multi-profil + Relationship Dynamics AI                        ★★★★☆  Belum
+P3-B  Wish timing terbaik (bulan terbaik untuk bertindak)            ★★★☆☆  Belum
+P3-C  Pilar Jam di kalender (hanya untuk hari ini)                   ★★☆☆☆  Belum
+P3-D  Special Stars / 神煞                                            ★★☆☆☆  Belum
+P3-E  12 Life Stages / 十二运星                                        ★★☆☆☆  Belum
+
+── PRIORITAS 4 — Nice to Have ────────────────────────────────────────────────
+P4-A  Share / Export Chart (web print + native screenshot)           ★★☆☆☆  Belum
+P4-B  Notifikasi hari lucky (push notification harian)               ★☆☆☆☆  Belum
+P4-C  Unit tests engine calculator                                   ★★★☆☆  Belum
+P4-D  Alembic migrations                                             ★★☆☆☆  Belum
+P4-E  Onboarding tutorial (3 slide, sekali tampil)                   ★★☆☆☆  Belum
+```
+
+---
+
+## Catatan untuk AI Agent yang Mengerjakan
+
+1. **Setiap perubahan backend** harus disync ke `hf-deploy/backend/` sebelum push ke HF Spaces
+2. **Push ke HF Spaces:** dari folder `hf-deploy/`, jalankan `git push hf master:main`
+3. **DB migrations:** selalu tambah `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` di `main.py` lifespan, bukan via alembic (sampai P4-D dikerjakan)
+4. **AI prompts:** perubahan prompt di `backend/app/services/cerebras.py` juga perlu dicopy ke `hf-deploy/backend/app/services/cerebras.py`
+5. **Theme consistency:** selalu pakai warna dari `theme.ts` (`C.gold`, `C.red`, dll.) — jangan hardcode warna baru
+6. **Platform.OS checks:** semua `Alert` dan interaksi yang butuh `window.confirm` harus ada branching `Platform.OS === 'web'`
+7. **Setelah selesai:** update `bazi_app.md` (section "Status Saat Ini") dan push ke GitHub + HF Spaces

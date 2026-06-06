@@ -18,7 +18,7 @@ _ERROR_PHRASES = [
 
 # (url, key_env_var, model) — SambaNova first (lebih jarang 429), Cerebras sebagai fallback
 _CASCADE = [
-    ("https://api.sambanova.ai/v1/chat/completions", "SAMBANOVA_API_KEY", "Meta-Llama-3.1-405B-Instruct"),
+    ("https://api.sambanova.ai/v1/chat/completions", "SAMBANOVA_API_KEY", "DeepSeek-V3-0324"),
     ("https://api.sambanova.ai/v1/chat/completions", "SAMBANOVA_API_KEY", "Meta-Llama-3.3-70B-Instruct"),
     ("https://api.cerebras.ai/v1/chat/completions",  "CEREBRAS_API_KEY",  "qwen-3-235b-a22b-instruct-2507"),
     ("https://api.cerebras.ai/v1/chat/completions",  "CEREBRAS_API_KEY",  "gpt-oss-120b"),

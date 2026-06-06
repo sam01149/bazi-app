@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir \"c:\\\\Users\\\\sam\\\\Documents\\\\kerja\\\\Self app\\\\hf-deploy\\\\backend\\\\app\\\\engine\")",
+      "Bash(dir \"c:\\\\Users\\\\sam\\\\Documents\\\\kerja\\\\Self app\\\\hf-deploy\\\\backend\\\\app\\\\services\")",
+      "Bash(not exist *)",
+      "Bash(npx tsc *)"
+    ]
+  }
+}

@@ -36,6 +36,7 @@ class LuckPillarSchema(BaseModel):
     branch: str
     age_start: float
     order_index: int
+    life_stage: Optional[str] = None
 
 class ChartResponse(BaseModel):
     id: str
@@ -54,6 +55,8 @@ class ChartResponse(BaseModel):
     luck_pillars: Optional[List[LuckPillarSchema]] = None
     active_luck_pillar: Optional[LuckPillarSchema] = None
     hour_unknown: bool = False
+    special_stars: Optional[Dict[str, Any]] = None
+    pillar_life_stages: Optional[Dict[str, str]] = None
 
     class Config:
         from_attributes = True
@@ -91,6 +94,13 @@ class WishAnalyzeRequest(BaseModel):
 
 class WishUpdateRequest(BaseModel):
     content: str
+
+class WishTimingRequest(BaseModel):
+    chart_id: str
+
+class ChartCompareRequest(BaseModel):
+    chart_id_a: str
+    chart_id_b: str
 
 # CachedNarasi schemas
 class CachedNarasiResponse(BaseModel):

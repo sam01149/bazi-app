@@ -8,6 +8,8 @@ from app.engine.tables import (
     SIX_CLASHES, SIX_COMBINATIONS, SIX_HARMS, THREE_COMBINATIONS,
     THREE_PENALTIES, HOUR_BRANCHES, PRODUCES, CONTROLS,
     STEM_COMBINATIONS, KONG_WANG,
+    GUI_REN, TAO_HUA, YI_MA, WEN_CHANG, GU_CHEN_GUA_SU,
+    LIFE_STAGES, LIFE_STAGE_START,
 )
 
 # Try to import swisseph. It might fail locally without C++ tools,
@@ -395,6 +397,77 @@ def get_active_luck_pillar(luck_pillars: list, birth_dt: datetime.datetime) -> d
         else:
             break
     return active
+
+
+def get_life_stage(day_stem: str, branch: str) -> str:
+    """Return the 12 Life Stage (十二运星) for a given branch under the day stem."""
+    start_branch = LIFE_STAGE_START.get(day_stem)
+    if not start_branch or branch not in EARTHLY_BRANCHES:
+        return ""
+    polarity = HEAVENLY_STEMS_POLARITY.get(day_stem, "Yang")
+    start_idx  = EARTHLY_BRANCHES.index(start_branch)
+    branch_idx = EARTHLY_BRANCHES.index(branch)
+    if polarity == "Yang":
+        offset = (branch_idx - start_idx) % 12
+    else:
+        offset = (start_idx - branch_idx) % 12
+    return LIFE_STAGES[offset]
+
+
+def get_special_stars(day_stem: str, year_branch: str, natal_branches: list) -> dict:
+    """
+    Identify which special stars (神煞) appear in the natal chart branches.
+    natal_branches: all four natal branch values [year_b, month_b, day_b, hour_b]
+    Returns a dict of star_name → {branches/branch, in_chart: bool}.
+    """
+    natal_set = set(natal_branches)
+    result = {}
+
+    # Gui Ren (贵人) — two noble people branches for day stem
+    gui_branches = GUI_REN.get(day_stem, [])
+    result["gui_ren"] = {
+        "branches": gui_branches,
+        "in_chart": any(b in natal_set for b in gui_branches),
+    }
+
+    # Tao Hua (桃花) — one branch based on year branch
+    tao_branch = TAO_HUA.get(year_branch)
+    if tao_branch:
+        result["tao_hua"] = {
+            "branch": tao_branch,
+            "in_chart": tao_branch in natal_set,
+        }
+
+    # Yi Ma (驿马) — one branch based on year branch
+    yi_branch = YI_MA.get(year_branch)
+    if yi_branch:
+        result["yi_ma"] = {
+            "branch": yi_branch,
+            "in_chart": yi_branch in natal_set,
+        }
+
+    # Wen Chang (文昌) — one branch based on day stem
+    wen_branch = WEN_CHANG.get(day_stem)
+    if wen_branch:
+        result["wen_chang"] = {
+            "branch": wen_branch,
+            "in_chart": wen_branch in natal_set,
+        }
+
+    # Gu Chen (孤辰) & Gua Su (寡宿) — based on year branch
+    gu_gua = GU_CHEN_GUA_SU.get(year_branch)
+    if gu_gua:
+        gu_branch, gua_branch = gu_gua
+        result["gu_chen"] = {
+            "branch": gu_branch,
+            "in_chart": gu_branch in natal_set,
+        }
+        result["gua_su"] = {
+            "branch": gua_branch,
+            "in_chart": gua_branch in natal_set,
+        }
+
+    return result
 
 
 def get_bazi_chart(dt: datetime.datetime) -> dict:

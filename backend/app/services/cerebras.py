@@ -235,6 +235,82 @@ async def generate_annual_narasi(
     return await _call_ai(messages, max_tokens=700)
 
 
+WISH_TIMING_PROMPT = """Kamu adalah BaZi Strategic Analyst.
+WAJIB: framing probabilistik. BAHASA: Indonesia.
+DILARANG: prediksi deterministik, afirmasi palsu.
+
+Input: chart natal + keinginan + pilar bulan untuk 6 bulan ke depan.
+
+Identifikasi 2-3 bulan yang paling kondusif untuk bertindak dalam mewujudkan keinginan ini.
+Untuk setiap bulan relevan: satu kalimat tentang mengapa bulan itu mendukung.
+
+Tutup dengan: "Bulan terbaik untuk mulai: [nama bulan/rentang bulan] — [alasan singkat]"
+Format: maksimal 4 paragraf pendek."""
+
+
+RELATIONSHIP_SYSTEM_PROMPT = """Kamu adalah BaZi Relationship Analyst.
+WAJIB: framing probabilistik. BAHASA: Indonesia.
+DILARANG: prediksi kecocokan, skor jodoh, klaim "kalian ditakdirkan", atau afirmasi palsu.
+
+Input: dua chart BaZi (chart_a dan chart_b).
+
+Analisis:
+1. Dinamika Day Master — bagaimana energi A bereaksi terhadap energi B secara struktural
+2. Area sinergi — dimana keduanya saling memperkuat
+3. Area gesekan — dimana energi keduanya cenderung bertabrakan
+4. Panduan komunikasi — cara praktis berkomunikasi dengan efektif antar keduanya
+
+Format: 3-4 paragraf ringkas. TIDAK ada skor, TIDAK ada "cocok/tidak cocok"."""
+
+
+async def generate_wish_timing(
+    chart_data: Dict[str, Any],
+    wish_content: str,
+    upcoming_months: list,
+) -> str:
+    chart_payload = {
+        "day_master": chart_data.get("day_master", ""),
+        "strength": chart_data.get("strength", ""),
+        "ge_ju": chart_data.get("ge_ju"),
+        "yong_shen": chart_data.get("yong_shen"),
+        "pillars": chart_data.get("pillars", {}),
+        "active_luck_pillar": chart_data.get("active_luck_pillar"),
+    }
+    chart_payload = {k: v for k, v in chart_payload.items() if v is not None}
+    messages = [
+        {"role": "system", "content": WISH_TIMING_PROMPT},
+        {"role": "user", "content": json.dumps({
+            "chart_natal": chart_payload,
+            "keinginan": wish_content,
+            "pilar_bulan_mendatang": upcoming_months,
+        }, ensure_ascii=False)},
+    ]
+    return await _call_ai(messages, max_tokens=600)
+
+
+async def generate_relationship_narasi(
+    chart_a: Dict[str, Any],
+    chart_b: Dict[str, Any],
+) -> str:
+    def _slim(c: Dict[str, Any]) -> dict:
+        return {k: v for k, v in {
+            "day_master": c.get("day_master", ""),
+            "strength": c.get("strength", ""),
+            "ge_ju": c.get("ge_ju"),
+            "yong_shen": c.get("yong_shen"),
+            "pillars": c.get("pillars", {}),
+        }.items() if v is not None}
+
+    messages = [
+        {"role": "system", "content": RELATIONSHIP_SYSTEM_PROMPT},
+        {"role": "user", "content": json.dumps({
+            "chart_a": _slim(chart_a),
+            "chart_b": _slim(chart_b),
+        }, ensure_ascii=False)},
+    ]
+    return await _call_ai(messages, max_tokens=700)
+
+
 async def generate_calendar_narasi(
     user_chart: Dict[str, Any],
     calendar_pillars: Dict[str, Any],

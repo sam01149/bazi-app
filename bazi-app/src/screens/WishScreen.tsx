@@ -61,6 +61,11 @@ export default function WishScreen() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText,  setEditText]  = useState('');
 
+  // Timing
+  const [timingId,      setTimingId]      = useState<string | null>(null);
+  const [timingText,    setTimingText]    = useState<Record<string, string>>({});
+  const [timingLoading, setTimingLoading] = useState<string | null>(null);
+
   // Intent chips
   const [selectedChip, setSelectedChip] = useState<number | null>(null);
 
@@ -167,6 +172,24 @@ export default function WishScreen() {
       { text: 'Batal', style: 'cancel' },
       { text: 'Hapus', style: 'destructive', onPress: doDelete },
     ]);
+  };
+
+  const loadTiming = async (wish: Wish) => {
+    if (!chartId) return;
+    if (timingText[wish.id]) {
+      setTimingId(prev => prev === wish.id ? null : wish.id);
+      return;
+    }
+    setTimingId(wish.id);
+    setTimingLoading(wish.id);
+    try {
+      const res = await axios.get(`${API_URL}/wishes/${wish.id}/timing?chart_id=${chartId}`);
+      setTimingText(prev => ({ ...prev, [wish.id]: res.data.timing ?? '' }));
+    } catch {
+      setTimingText(prev => ({ ...prev, [wish.id]: 'Tidak dapat memuat rekomendasi waktu. Periksa koneksi internet.' }));
+    } finally {
+      setTimingLoading(null);
+    }
   };
 
   const toggleExpand = (id: string) => {
@@ -312,16 +335,45 @@ export default function WishScreen() {
                         <Text style={styles.analyzingText}>AI membaca chart BaZi kamu…</Text>
                       </View>
                     ) : wish.analysis ? (
-                      <View style={styles.analysisBox}>
-                        <Text style={styles.analysisLabel}>Pembacaan BaZi</Text>
-                        <Text style={[styles.analysisText, blurStyle]}>{wish.analysis}</Text>
-                        {wish.analyzed_at && (
-                          <Text style={styles.analyzedAtText}>
-                            Dianalisis {formatDate(wish.analyzed_at)}
-                            {isStale ? ' · mungkin sudah tidak relevan dengan dekade saat ini' : ''}
-                          </Text>
+                      <>
+                        <View style={styles.analysisBox}>
+                          <Text style={styles.analysisLabel}>Pembacaan BaZi</Text>
+                          <Text style={[styles.analysisText, blurStyle]}>{wish.analysis}</Text>
+                          {wish.analyzed_at && (
+                            <Text style={styles.analyzedAtText}>
+                              Dianalisis {formatDate(wish.analyzed_at)}
+                              {isStale ? ' · mungkin sudah tidak relevan dengan dekade saat ini' : ''}
+                            </Text>
+                          )}
+                        </View>
+
+                        {/* Timing section */}
+                        {timingLoading === wish.id ? (
+                          <View style={styles.timingLoadingRow}>
+                            <ActivityIndicator size="small" color={C.teal} />
+                            <Text style={styles.timingLoadingText}>Mencari waktu terbaik…</Text>
+                          </View>
+                        ) : timingText[wish.id] && timingId === wish.id ? (
+                          <View style={styles.timingBox}>
+                            <Text style={styles.timingLabel}>⏰ Waktu Terbaik untuk Bertindak</Text>
+                            <Text style={styles.timingText}>{timingText[wish.id]}</Text>
+                            <TouchableOpacity
+                              onPress={() => setTimingId(null)}
+                              style={styles.timingHideBtn}
+                            >
+                              <Text style={styles.timingHideBtnText}>Sembunyikan</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ) : (
+                          <TouchableOpacity
+                            style={styles.timingBtn}
+                            onPress={() => loadTiming(wish)}
+                            activeOpacity={0.8}
+                          >
+                            <Text style={styles.timingBtnText}>⏰ Kapan Waktu Terbaik?</Text>
+                          </TouchableOpacity>
                         )}
-                      </View>
+                      </>
                     ) : (
                       <TouchableOpacity
                         style={styles.analyzeBtn}
@@ -496,4 +548,24 @@ const styles = StyleSheet.create({
   },
   footerBtn:     { paddingVertical: 2 },
   footerBtnText: { fontSize: 13, color: C.textMuted, fontWeight: '600' },
+
+  // Timing
+  timingBtn: {
+    marginTop: 10, borderWidth: 1, borderColor: C.teal + '88',
+    borderRadius: 10, paddingVertical: 10, alignItems: 'center',
+    backgroundColor: C.teal + '15',
+  },
+  timingBtnText: { fontSize: 13, fontWeight: '700', color: C.teal },
+  timingLoadingRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 },
+  timingLoadingText: { color: C.textMuted, fontSize: 13 },
+  timingBox: {
+    marginTop: 10, backgroundColor: C.teal + '12',
+    borderWidth: 1, borderColor: C.teal + '44',
+    borderLeftWidth: 3, borderLeftColor: C.teal,
+    borderRadius: 10, padding: 12,
+  },
+  timingLabel:   { fontSize: 11, fontWeight: '900', color: C.teal, letterSpacing: 0.8, marginBottom: 8 },
+  timingText:    { fontSize: 13, color: C.text, lineHeight: 22 },
+  timingHideBtn: { marginTop: 8, alignItems: 'flex-end' },
+  timingHideBtnText: { fontSize: 11, color: C.teal, fontWeight: '700' },
 });

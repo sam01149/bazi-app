@@ -1,15 +1,37 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
-  ScrollView, ActivityIndicator, Alert, Platform, Image,
+  ScrollView, ActivityIndicator, Alert, Platform, Image, Modal, Share, FlatList, Dimensions,
 } from 'react-native';
 import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL } from '../config';
 import { useChart } from '../context/ChartContext';
 import { C, STEM_COLOR, STEM_ELEMENT, BRANCH_ANIMAL } from '../theme';
 import InfoModal from '../components/InfoModal';
 
-type TermKey = 'day_master' | 'empat_pilar' | 'ge_ju' | 'yong_shen' | 'stem_combo' | 'luck_pillars' | 'kong_wang';
+const ONBOARDING_KEY = '@bazi_onboarding_seen';
+const SCREEN_W = Dimensions.get('window').width;
+
+const ONBOARDING_SLIDES = [
+  {
+    icon: '⊞',
+    title: 'BaZi — Peta Energi Kelahiranmu',
+    body: 'BaZi ("Delapan Karakter") adalah sistem metafisika Tionghoa yang membaca pola energi dari tanggal dan jam kelahiranmu.\n\nEmpat Pilar — Tahun, Bulan, Hari, Jam — masing-masing membawa informasi tentang kepribadian, karier, hubungan, dan siklus hidup.',
+  },
+  {
+    icon: '◉',
+    title: 'Apa yang Akan Kamu Dapat',
+    body: 'Profil BaZi — Day Master, Ge Ju, Yong Shen, Luck Pillars, Special Stars, dan Life Stages untuk memahami siapa kamu secara struktural.\n\nKalender Energi — setiap hari dilihat lewat lensa chart natal-mu.\n\nKeinginan — analisis AI untuk melihat seberapa selaras keinginanmu dengan struktur chart.',
+  },
+  {
+    icon: '◌',
+    title: 'Interpretasi adalah Kecenderungan, Bukan Ramalan',
+    body: 'BaZi membaca pola dan kecenderungan — bukan memprediksikan masa depan secara deterministik.\n\nSetiap interpretasi menggunakan framing probabilistik: "cenderung", "pola", bukan "akan" atau "pasti".\n\nKamu tetap pegang kendali atas keputusan dan tindakanmu.',
+  },
+];
+
+type TermKey = 'day_master' | 'empat_pilar' | 'ge_ju' | 'yong_shen' | 'stem_combo' | 'luck_pillars' | 'kong_wang' | 'special_stars' | 'life_stages';
 
 const TERM_EXPLANATIONS: Record<TermKey, { title: string; subtitle: string; body: string }> = {
   day_master: {
@@ -46,6 +68,16 @@ const TERM_EXPLANATIONS: Record<TermKey, { title: string; subtitle: string; body
     title: 'Kong Wang / Void Branches (空亡)',
     subtitle: 'Branch yang kehilangan efektivitas',
     body: 'Dalam setiap siklus 旬 (10 hari), ada 2 Earthly Branch yang "kosong" atau tidak aktif — disebut Kong Wang (空亡) atau Void.\n\nBranch yang masuk dalam void cenderung kehilangan efektivitasnya: Ten God yang ada di branch itu menjadi kurang kuat bekerja. Bukan berarti buruk — hanya menunjukkan area di mana energi tersebut tidak bekerja maksimal.',
+  },
+  special_stars: {
+    title: 'Special Stars (神煞)',
+    subtitle: 'Bintang-bintang karakter tambahan',
+    body: '神煞 adalah "bintang" karakter yang muncul berdasarkan kombinasi stem dan branch di chart natal:\n\n贵人 Gui Ren — Noble People: orang-orang berpengaruh yang cenderung membantu di saat kritis.\n桃花 Tao Hua — Peach Blossom: daya tarik sosial dan pesona emosional yang kuat.\n驿马 Yi Ma — Sky Horse: mobilitas tinggi, perjalanan, perubahan lingkungan.\n文昌 Wen Chang — Intelligence: kemampuan akademis, menulis, dan belajar.\n孤辰/寡宿 Gu Chen/Gua Su — Solitary Stars: kecenderungan periode isolasi atau kemandirian.',
+  },
+  life_stages: {
+    title: '12 Life Stages (十二运星)',
+    subtitle: 'Siklus energi setiap branch untuk Day Master',
+    body: 'Setiap Earthly Branch memiliki "kualitas energi" yang berbeda terhadap Day Master:\n\n长生 Cháng Shēng — Tumbuh (energi baru, penuh potensi)\n沐浴 Mùyù — Mandi (phase sensitif, perlu arahan)\n冠带 Guàn Dài — Berpakaian (mulai matang)\n临官 Lín Guān — Puncak Karier (sangat produktif)\n帝旺 Dì Wàng — Kejayaan (puncak energi)\n衰 Shuāi — Menurun (efisiensi berkurang)\n病 Bìng — Sakit (energi terkuras)\n死 Sǐ — Mati (energi berhenti)\n墓 Mù — Makam (tersimpan, kurang aktif)\n绝 Jué — Punah (paling lemah)\n胎 Tāi — Konsepsi (benih baru)\n养 Yǎng — Perawatan (dipersiapkan)\n\nSetiap Luck Pillar membawa kualitas ini yang mempengaruhi dekade itu.',
   },
 };
 
@@ -144,8 +176,20 @@ function WebTimeInput({ value, onChange }: { value: string; onChange: (v: string
   );
 }
 
+const SPECIAL_STAR_META: Record<string, { label: string; desc: string; color: string }> = {
+  gui_ren:   { label: '贵人 Gui Ren',   color: C.gold,  desc: 'Noble People — orang-orang berpengaruh yang muncul membantu di saat kritis' },
+  tao_hua:   { label: '桃花 Tao Hua',   color: '#E08080', desc: 'Peach Blossom — daya tarik sosial dan pesona emosional yang tinggi' },
+  yi_ma:     { label: '驿马 Yi Ma',     color: C.teal,  desc: 'Sky Horse — mobilitas, perjalanan, perubahan lingkungan yang aktif' },
+  wen_chang: { label: '文昌 Wen Chang', color: C.amber, desc: 'Intelligence Star — bakat akademis, menulis, dan kemampuan belajar' },
+  gu_chen:   { label: '孤辰 Gu Chen',   color: C.textFaint, desc: 'Solitary Star — kecenderungan periode isolasi atau kemandirian (Pria)' },
+  gua_su:    { label: '寡宿 Gua Su',    color: C.textFaint, desc: 'Solitary Star — kecenderungan periode isolasi atau kemandirian (Wanita)' },
+};
+
 export default function ProfileScreen() {
-  const { chartId, timezone, setChart, clearChart, loading: ctxLoading } = useChart();
+  const {
+    chartId, timezone, setChart, clearChart, loading: ctxLoading,
+    profiles, activeProfileIdx, switchProfile, addNewProfile, removeActiveProfile, renameProfile,
+  } = useChart();
 
   const [date,        setDate]        = useState('');
   const [time,        setTime]        = useState('');
@@ -165,6 +209,33 @@ export default function ProfileScreen() {
 
   const scrollRef   = useRef<ScrollView>(null);
   const narasiBoxY  = useRef<number>(0);
+
+  // Profile switcher
+  const [profileModalVisible, setProfileModalVisible] = useState(false);
+  const [editingNickname,     setEditingNickname]     = useState('');
+  const [renamingIdx,         setRenamingIdx]         = useState<number | null>(null);
+
+  // Compare
+  const [compareModalVisible, setCompareModalVisible] = useState(false);
+  const [compareTargetIdx,    setCompareTargetIdx]    = useState<number | null>(null);
+  const [compareNarasi,       setCompareNarasi]       = useState('');
+  const [compareLoading,      setCompareLoading]      = useState(false);
+
+  // Onboarding
+  const [onboardingVisible,   setOnboardingVisible]   = useState(false);
+  const [onboardSlide,        setOnboardSlide]        = useState(0);
+  const flatRef = useRef<FlatList>(null);
+
+  useEffect(() => {
+    AsyncStorage.getItem(ONBOARDING_KEY).then(val => {
+      if (!val) setOnboardingVisible(true);
+    });
+  }, []);
+
+  const dismissOnboarding = async () => {
+    await AsyncStorage.setItem(ONBOARDING_KEY, 'true');
+    setOnboardingVisible(false);
+  };
 
   const info = (key: TermKey) => (
     <TouchableOpacity onPress={() => setInfoTopic(key)} style={styles.infoBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -285,9 +356,56 @@ export default function ProfileScreen() {
     doCalculate();
   };
 
+  const handleShare = async () => {
+    if (!chartData) return;
+    const pillars = chartData.pillars;
+    const text = [
+      `◉ BaZi Chart`,
+      `Day Master: ${pillars?.day?.stem ?? '-'} (${chartData.day_master_strength ?? ''})`,
+      `Ge Ju: ${chartData.ge_ju ?? '-'} | Yong Shen: ${chartData.yong_shen ?? '-'}`,
+      ``,
+      `Pilar Tahun: ${pillars?.year?.stem ?? '-'}${pillars?.year?.branch ?? '-'}`,
+      `Pilar Bulan: ${pillars?.month?.stem ?? '-'}${pillars?.month?.branch ?? '-'}`,
+      `Pilar Hari:  ${pillars?.day?.stem ?? '-'}${pillars?.day?.branch ?? '-'}`,
+      `Pilar Jam:   ${pillars?.hour?.stem ?? '-'}${pillars?.hour?.branch ?? '-'}${chartData.hour_unknown ? ' (~)' : ''}`,
+      ``,
+      `bazi-app-two.vercel.app`,
+    ].join('\n');
+
+    if (Platform.OS === 'web') {
+      if (navigator.share) {
+        navigator.share({ title: 'BaZi Chart Saya', text }).catch(() => {});
+      } else {
+        navigator.clipboard?.writeText(text);
+        Alert.alert('Disalin!', 'Data chart disalin ke clipboard.');
+      }
+      return;
+    }
+    await Share.share({ message: text, title: 'BaZi Chart Saya' });
+  };
+
+  const handleCompare = async () => {
+    if (compareTargetIdx === null || !chartId) return;
+    const targetProfile = profiles[compareTargetIdx];
+    if (!targetProfile?.chartId) return;
+    setCompareLoading(true);
+    setCompareNarasi('');
+    try {
+      const res = await axios.post(`${API_URL}/charts/compare`, {
+        chart_id_a: chartId,
+        chart_id_b: targetProfile.chartId,
+      });
+      setCompareNarasi(res.data.narasi ?? '');
+    } catch {
+      setCompareNarasi('Tidak dapat membandingkan chart. Periksa koneksi internet.');
+    } finally {
+      setCompareLoading(false);
+    }
+  };
+
   const confirmReset = () => {
     const doReset = async () => {
-      await clearChart();
+      await removeActiveProfile();
       setChartData(null);
       setCachedSections({});
       setNarasi('');
@@ -323,6 +441,68 @@ export default function ProfileScreen() {
   if (!chartId) {
     return (
       <ScrollView style={styles.root} contentContainerStyle={styles.setupContainer} showsVerticalScrollIndicator={false}>
+
+        {/* ── ONBOARDING MODAL ─────────────────────────────────── */}
+        <Modal
+          visible={onboardingVisible}
+          animationType="fade"
+          transparent={false}
+          statusBarTranslucent
+          onRequestClose={dismissOnboarding}
+        >
+          <View style={styles.onboardRoot}>
+            <FlatList
+              ref={flatRef}
+              data={ONBOARDING_SLIDES}
+              keyExtractor={(_, i) => String(i)}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onMomentumScrollEnd={e => {
+                const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
+                setOnboardSlide(idx);
+              }}
+              renderItem={({ item }) => (
+                <View style={[styles.onboardSlide, { width: SCREEN_W }]}>
+                  <Text style={styles.onboardIcon}>{item.icon}</Text>
+                  <Text style={styles.onboardTitle}>{item.title}</Text>
+                  <Text style={styles.onboardBody}>{item.body}</Text>
+                </View>
+              )}
+            />
+            {/* Dot indicators */}
+            <View style={styles.onboardDots}>
+              {ONBOARDING_SLIDES.map((_, i) => (
+                <View key={i} style={[styles.onboardDot, i === onboardSlide && styles.onboardDotActive]} />
+              ))}
+            </View>
+            {/* Action row */}
+            <View style={styles.onboardActions}>
+              {onboardSlide < ONBOARDING_SLIDES.length - 1 ? (
+                <>
+                  <TouchableOpacity style={styles.onboardSkip} onPress={dismissOnboarding}>
+                    <Text style={styles.onboardSkipText}>Lewati</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.onboardNext}
+                    onPress={() => {
+                      const next = onboardSlide + 1;
+                      flatRef.current?.scrollToIndex({ index: next, animated: true });
+                      setOnboardSlide(next);
+                    }}
+                  >
+                    <Text style={styles.onboardNextText}>Lanjut →</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <TouchableOpacity style={styles.onboardStart} onPress={dismissOnboarding}>
+                  <Text style={styles.onboardStartText}>Mulai →</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </Modal>
+
         <View style={styles.setupHero}>
           <Image source={require('../../assets/logo.png')} style={{ width: 72, height: 72, borderRadius: 18, marginBottom: 16 }} />
           <Text style={styles.setupTitle}>BaZi Chart</Text>
@@ -470,12 +650,14 @@ export default function ProfileScreen() {
   }
 
   // ── PROFILE ────────────────────────────────────────────────────────────────
-  const voidBranches: string[] = chartData?.void_branches ?? [];
-  const stemCombos: any[] = chartData?.stem_combinations ?? [];
-  const luckPillars: any[] = chartData?.luck_pillars ?? [];
-  const activeLp: any = chartData?.active_luck_pillar ?? null;
-  const hiddenTg: Record<string, any[]> = chartData?.hidden_ten_gods ?? {};
-  const hourUnknown: boolean = chartData?.hour_unknown ?? false;
+  const voidBranches:     string[]             = chartData?.void_branches ?? [];
+  const stemCombos:       any[]                = chartData?.stem_combinations ?? [];
+  const luckPillars:      any[]                = chartData?.luck_pillars ?? [];
+  const activeLp:         any                  = chartData?.active_luck_pillar ?? null;
+  const hiddenTg:         Record<string, any[]>= chartData?.hidden_ten_gods ?? {};
+  const hourUnknown:      boolean              = chartData?.hour_unknown ?? false;
+  const specialStars:     Record<string, any>  = chartData?.special_stars ?? {};
+  const pillarLifeStages: Record<string, string> = chartData?.pillar_life_stages ?? {};
 
   const snapshotParts = (() => {
     const text = cachedSections['full_analysis'] ?? narasi;
@@ -496,6 +678,161 @@ export default function ProfileScreen() {
         </View>
       ) : chartData ? (
         <>
+          {/* ── Profile Switcher ── */}
+          {profiles.length > 0 && (
+            <View style={styles.profileSwitcherRow}>
+              <TouchableOpacity
+                style={styles.profileSwitcherBtn}
+                onPress={() => setProfileModalVisible(true)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.profileSwitcherName} numberOfLines={1}>
+                  {profiles[activeProfileIdx]?.nickname ?? 'Profil'}
+                </Text>
+                <Text style={styles.profileSwitcherChevron}>▾</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.addProfileBtn}
+                onPress={async () => {
+                  await addNewProfile();
+                  setChartData(null);
+                  setCachedSections({});
+                  setNarasi('');
+                  setActiveSection('');
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.addProfileBtnText}>+ Profil Baru</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* ── Profile Switcher Modal ── */}
+          <Modal
+            visible={profileModalVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setProfileModalVisible(false)}
+          >
+            <TouchableOpacity
+              style={styles.modalOverlay}
+              activeOpacity={1}
+              onPress={() => { setProfileModalVisible(false); setRenamingIdx(null); }}
+            >
+              <View style={styles.profileModal} onStartShouldSetResponder={() => true}>
+                <Text style={styles.profileModalTitle}>Pilih Profil</Text>
+                {profiles.map((p, idx) => (
+                  <View key={idx} style={styles.profileModalItem}>
+                    {renamingIdx === idx ? (
+                      <TextInput
+                        style={styles.profileNicknameInput}
+                        value={editingNickname}
+                        onChangeText={setEditingNickname}
+                        autoFocus
+                        onSubmitEditing={async () => {
+                          if (editingNickname.trim()) await renameProfile(idx, editingNickname.trim());
+                          setRenamingIdx(null);
+                        }}
+                        onBlur={async () => {
+                          if (editingNickname.trim()) await renameProfile(idx, editingNickname.trim());
+                          setRenamingIdx(null);
+                        }}
+                      />
+                    ) : (
+                      <TouchableOpacity
+                        style={styles.profileModalItemInner}
+                        onPress={async () => {
+                          await switchProfile(idx);
+                          if (idx !== activeProfileIdx) {
+                            setChartData(null);
+                            setCachedSections({});
+                            setNarasi('');
+                            setActiveSection('');
+                          }
+                          setProfileModalVisible(false);
+                        }}
+                        onLongPress={() => {
+                          setRenamingIdx(idx);
+                          setEditingNickname(p.nickname);
+                        }}
+                        activeOpacity={0.75}
+                      >
+                        <Text style={[styles.profileModalName, idx === activeProfileIdx && { color: C.gold }]}>
+                          {idx === activeProfileIdx ? '✓ ' : '  '}{p.nickname}
+                        </Text>
+                        <Text style={styles.profileModalEdit}>tekan lama untuk ganti nama</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))}
+                <TouchableOpacity
+                  style={styles.profileModalClose}
+                  onPress={() => { setProfileModalVisible(false); setRenamingIdx(null); }}
+                >
+                  <Text style={styles.profileModalCloseText}>Tutup</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </Modal>
+
+          {/* ── Compare Modal ── */}
+          <Modal
+            visible={compareModalVisible}
+            transparent
+            animationType="slide"
+            onRequestClose={() => setCompareModalVisible(false)}
+          >
+            <View style={styles.compareModalOverlay}>
+              <View style={styles.compareModal}>
+                <Text style={styles.compareModalTitle}>◎ Dinamika Bersama</Text>
+                {!compareNarasi && !compareLoading && (
+                  <>
+                    <Text style={styles.compareSelectLabel}>Bandingkan dengan:</Text>
+                    {profiles.filter((_, i) => i !== activeProfileIdx && profiles[i]?.chartId).map((p, i) => {
+                      const realIdx = profiles.indexOf(p);
+                      return (
+                        <TouchableOpacity
+                          key={realIdx}
+                          style={[styles.compareProfileBtn, compareTargetIdx === realIdx && styles.compareProfileBtnActive]}
+                          onPress={() => setCompareTargetIdx(realIdx)}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={[styles.compareProfileBtnText, compareTargetIdx === realIdx && { color: C.gold }]}>
+                            {p.nickname}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                    <TouchableOpacity
+                      style={[styles.compareRunBtn, (!compareTargetIdx && compareTargetIdx !== 0) && { opacity: 0.4 }]}
+                      onPress={handleCompare}
+                      disabled={compareTargetIdx === null}
+                    >
+                      <Text style={styles.compareRunBtnText}>Analisis Dinamika →</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+                {compareLoading && (
+                  <View style={{ alignItems: 'center', padding: 20, gap: 10 }}>
+                    <ActivityIndicator color={C.gold} />
+                    <Text style={{ color: C.textMuted, fontSize: 13 }}>AI membandingkan kedua chart…</Text>
+                  </View>
+                )}
+                {!!compareNarasi && (
+                  <ScrollView style={{ maxHeight: 360 }}>
+                    <Text style={styles.compareNarasiText}>{compareNarasi}</Text>
+                  </ScrollView>
+                )}
+                <TouchableOpacity
+                  style={styles.compareCloseBtn}
+                  onPress={() => { setCompareModalVisible(false); setCompareNarasi(''); setCompareTargetIdx(null); }}
+                >
+                  <Text style={styles.compareCloseBtnText}>Tutup</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
+
           {/* Day Master Hero */}
           {(() => {
             const dayStem = chartData.pillars?.day?.stem ?? '';
@@ -569,6 +906,7 @@ export default function ProfileScreen() {
               const isVoid  = voidBranches.includes(branch) && branch !== '-';
               const dominantHidden = hiddenTg[p]?.[0];
               const isHourEst = p === 'hour' && hourUnknown;
+              const lifeStage = pillarLifeStages[p];
               return (
                 <View key={p} style={[styles.pillarCol, isDay && { backgroundColor: C.surfaceHigh }]}>
                   <Text style={styles.pillarColLabel}>{PILLAR_LABEL[p]}</Text>
@@ -590,6 +928,9 @@ export default function ProfileScreen() {
                     <Text style={styles.pillarColHiddenGod} numberOfLines={1}>
                       藏{dominantHidden.ten_god}
                     </Text>
+                  )}
+                  {lifeStage && (
+                    <Text style={styles.pillarColLifeStage} numberOfLines={1}>{lifeStage}</Text>
                   )}
                   {isHourEst && (
                     <View style={styles.estimatedBadge}>
@@ -648,6 +989,11 @@ export default function ProfileScreen() {
                       <View style={[styles.lpDivider, { borderColor: isActive ? C.gold : C.border }]} />
                       <Text style={[styles.lpBranch, isActive && { color: C.goldSoft }]}>{lp.branch}</Text>
                       <Text style={[styles.lpAge, isActive && { color: C.gold }]}>{lp.age_start}岁</Text>
+                      {lp.life_stage && (
+                        <Text style={[styles.lpLifeStage, isActive && { color: C.amber }]} numberOfLines={1}>
+                          {lp.life_stage}
+                        </Text>
+                      )}
                     </View>
                   );
                 })}
@@ -680,6 +1026,42 @@ export default function ProfileScreen() {
                   ))}
                 </View>
                 <Text style={styles.voidNote}>Ten God di branch ini cenderung kehilangan efektivitas</Text>
+              </View>
+            </>
+          )}
+
+          {/* Special Stars (神煞) */}
+          {Object.keys(specialStars).length > 0 && (
+            <>
+              <View style={styles.sectionLabelRow}>
+                <Text style={styles.sectionLabel}>神煞 SPECIAL STARS</Text>
+                {info('special_stars')}
+              </View>
+              <View style={styles.starsCard}>
+                {Object.entries(specialStars).map(([key, val]: [string, any]) => {
+                  const meta = SPECIAL_STAR_META[key];
+                  if (!meta) return null;
+                  const branches = val.branches ?? (val.branch ? [val.branch] : []);
+                  return (
+                    <View key={key} style={[styles.starRow, val.in_chart && styles.starRowActive]}>
+                      <View style={styles.starLeft}>
+                        <Text style={[styles.starLabel, { color: val.in_chart ? meta.color : C.textFaint }]}>
+                          {meta.label}
+                        </Text>
+                        <Text style={styles.starBranches}>{branches.join(' · ')}</Text>
+                      </View>
+                      <View style={styles.starRight}>
+                        <Text style={[styles.starStatus, { color: val.in_chart ? meta.color : C.textFaint }]}>
+                          {val.in_chart ? '● 在命' : '○ 不在'}
+                        </Text>
+                        <Text style={styles.starDesc} numberOfLines={2}>{meta.desc}</Text>
+                      </View>
+                    </View>
+                  );
+                })}
+                <TouchableOpacity onPress={() => setInfoTopic('special_stars')} style={styles.starsInfoBtn}>
+                  <Text style={styles.starsInfoBtnText}>ⓘ Tentang 神煞</Text>
+                </TouchableOpacity>
               </View>
             </>
           )}
@@ -756,6 +1138,21 @@ export default function ProfileScreen() {
             </Text>
           </View>
 
+          <View style={styles.actionRow}>
+            <TouchableOpacity style={styles.shareBtn} onPress={handleShare} activeOpacity={0.8}>
+              <Text style={styles.shareBtnText}>↑ Bagikan Chart</Text>
+            </TouchableOpacity>
+            {profiles.filter((_, i) => i !== activeProfileIdx && profiles[i]?.chartId).length > 0 && (
+              <TouchableOpacity
+                style={styles.compareBtn}
+                onPress={() => { setCompareModalVisible(true); setCompareNarasi(''); setCompareTargetIdx(null); }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.compareBtnText}>◎ Bandingkan</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
           <TouchableOpacity style={styles.resetBtn} onPress={confirmReset} activeOpacity={0.8}>
             <Text style={styles.resetBtnText}>Reset Profil</Text>
           </TouchableOpacity>
@@ -769,7 +1166,7 @@ export default function ProfileScreen() {
       {/* ── Term explanation modal ── */}
       {infoTopic !== '' && TERM_EXPLANATIONS[infoTopic] && (
         <InfoModal
-          visible={infoTopic !== ''}
+          visible
           title={TERM_EXPLANATIONS[infoTopic].title}
           subtitle={TERM_EXPLANATIONS[infoTopic].subtitle}
           body={TERM_EXPLANATIONS[infoTopic].body}
@@ -1070,4 +1467,157 @@ const styles = StyleSheet.create({
     paddingVertical: 13, alignItems: 'center',
   },
   resetBtnText: { color: C.red, fontWeight: '700', fontSize: 14 },
+
+  // Profile switcher
+  profileSwitcherRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  profileSwitcherBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: C.surface, borderWidth: 1, borderColor: C.border,
+    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, flex: 1, marginRight: 8,
+  },
+  profileSwitcherName: { fontSize: 14, fontWeight: '700', color: C.gold, flex: 1 },
+  profileSwitcherChevron: { fontSize: 12, color: C.gold },
+  addProfileBtn: {
+    backgroundColor: C.surface, borderWidth: 1, borderColor: C.gold + '88',
+    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
+  },
+  addProfileBtnText: { fontSize: 13, fontWeight: '700', color: C.goldSoft },
+
+  // Profile switcher modal
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center',
+  },
+  profileModal: {
+    backgroundColor: C.surface, borderRadius: 16, padding: 20,
+    width: '85%', borderWidth: 1, borderColor: C.border,
+  },
+  profileModalTitle: { fontSize: 14, fontWeight: '900', color: C.gold, marginBottom: 14, letterSpacing: 1 },
+  profileModalItem: { marginBottom: 8 },
+  profileModalItemInner: { paddingVertical: 8, paddingHorizontal: 4 },
+  profileModalName: { fontSize: 15, fontWeight: '700', color: C.text },
+  profileModalEdit: { fontSize: 10, color: C.textFaint, marginTop: 2 },
+  profileNicknameInput: {
+    backgroundColor: C.bg, borderWidth: 1.5, borderColor: C.gold,
+    borderRadius: 8, padding: 8, color: C.text, fontSize: 14,
+  },
+  profileModalClose: {
+    marginTop: 12, paddingVertical: 10, borderRadius: 10,
+    borderWidth: 1, borderColor: C.border, alignItems: 'center',
+  },
+  profileModalCloseText: { color: C.textMuted, fontWeight: '700', fontSize: 14 },
+
+  // Special Stars
+  starsCard: {
+    backgroundColor: C.surface, borderRadius: 12, padding: 14, marginBottom: 20,
+    borderWidth: 1, borderColor: C.border, gap: 10,
+  },
+  starRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
+    paddingVertical: 8, paddingHorizontal: 4, borderRadius: 8,
+  },
+  starRowActive: { backgroundColor: C.surfaceHigh },
+  starLeft:      { flex: 1, marginRight: 8 },
+  starLabel:     { fontSize: 12, fontWeight: '800', marginBottom: 2 },
+  starBranches:  { fontSize: 11, color: C.textFaint, fontWeight: '600' },
+  starRight:     { flex: 1.5, alignItems: 'flex-end' },
+  starStatus:    { fontSize: 11, fontWeight: '900', letterSpacing: 0.3, marginBottom: 3 },
+  starDesc:      { fontSize: 10, color: C.textFaint, textAlign: 'right', lineHeight: 14 },
+  starsInfoBtn:  { paddingTop: 6, paddingBottom: 2, alignItems: 'center' },
+  starsInfoBtnText: { fontSize: 11, color: C.textFaint, fontStyle: 'italic' },
+
+  // Life stage in pillar/LP
+  pillarColLifeStage: { fontSize: 9, color: C.teal, marginTop: 3, fontWeight: '700' },
+  lpLifeStage: { fontSize: 9, color: C.textFaint, marginTop: 2, fontWeight: '700' },
+
+  // Share + Compare buttons
+  actionRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
+  shareBtn: {
+    flex: 1, borderWidth: 1.5, borderColor: C.gold + '88', borderRadius: 12,
+    paddingVertical: 12, alignItems: 'center', backgroundColor: C.surfaceHigh,
+  },
+  shareBtnText: { color: C.goldSoft, fontWeight: '700', fontSize: 14 },
+  compareBtn: {
+    flex: 1, borderWidth: 1.5, borderColor: C.teal + '88', borderRadius: 12,
+    paddingVertical: 12, alignItems: 'center', backgroundColor: C.surfaceHigh,
+  },
+  compareBtnText: { color: C.teal, fontWeight: '700', fontSize: 14 },
+
+  // Compare modal
+  compareModalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  compareModal: {
+    backgroundColor: C.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    padding: 20, borderWidth: 1, borderColor: C.border, maxHeight: '85%',
+  },
+  compareModalTitle: { fontSize: 15, fontWeight: '900', color: C.gold, letterSpacing: 1, marginBottom: 14 },
+  compareSelectLabel: { fontSize: 12, color: C.textMuted, fontWeight: '700', marginBottom: 8 },
+  compareProfileBtn: {
+    paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10,
+    borderWidth: 1.5, borderColor: C.border, backgroundColor: C.bg, marginBottom: 8,
+  },
+  compareProfileBtnActive: { borderColor: C.gold, backgroundColor: C.surfaceHigh },
+  compareProfileBtnText: { fontSize: 14, fontWeight: '700', color: C.textMuted },
+  compareRunBtn: {
+    backgroundColor: C.gold, paddingVertical: 13, borderRadius: 12, alignItems: 'center', marginTop: 8,
+  },
+  compareRunBtnText: { color: C.bg, fontWeight: '900', fontSize: 14 },
+  compareNarasiText: { fontSize: 14, color: C.text, lineHeight: 23 },
+  compareCloseBtn: {
+    marginTop: 16, paddingVertical: 10, borderRadius: 10,
+    borderWidth: 1, borderColor: C.border, alignItems: 'center',
+  },
+  compareCloseBtnText: { color: C.textMuted, fontWeight: '700', fontSize: 14 },
+
+  // Onboarding
+  onboardRoot: {
+    flex: 1, backgroundColor: C.bg, justifyContent: 'space-between',
+  },
+  onboardSlide: {
+    flex: 1, paddingHorizontal: 32, paddingTop: 100, paddingBottom: 20,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  onboardIcon: {
+    fontSize: 72, color: C.gold, marginBottom: 32, textAlign: 'center',
+  },
+  onboardTitle: {
+    fontSize: 22, fontWeight: '900', color: C.text,
+    textAlign: 'center', letterSpacing: 0.5, marginBottom: 20,
+    lineHeight: 30,
+  },
+  onboardBody: {
+    fontSize: 15, color: C.textMuted, textAlign: 'center',
+    lineHeight: 24, maxWidth: 340,
+  },
+  onboardDots: {
+    flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
+    paddingVertical: 20, gap: 8,
+  },
+  onboardDot: {
+    width: 8, height: 8, borderRadius: 4, backgroundColor: C.border,
+  },
+  onboardDotActive: {
+    width: 24, backgroundColor: C.gold,
+  },
+  onboardActions: {
+    flexDirection: 'row', alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 32, paddingBottom: 48, paddingTop: 8,
+  },
+  onboardSkip: { paddingVertical: 14, paddingHorizontal: 8 },
+  onboardSkipText: { color: C.textFaint, fontSize: 15, fontWeight: '700' },
+  onboardNext: {
+    backgroundColor: C.gold, paddingVertical: 14, paddingHorizontal: 28,
+    borderRadius: 14,
+  },
+  onboardNextText: { color: C.bg, fontWeight: '900', fontSize: 15 },
+  onboardStart: {
+    flex: 1, backgroundColor: C.gold, paddingVertical: 16,
+    borderRadius: 14, alignItems: 'center',
+  },
+  onboardStartText: { color: C.bg, fontWeight: '900', fontSize: 16 },
 });

@@ -294,6 +294,8 @@ export default function CalendarScreen() {
   const energy = chartId && dayData ? getEnergyStatus(interactions) : null;
   const isPastDate = selectedDate < todayStr;
   const annualData = annualCache[viewYear];
+  const isSelectedToday = selectedDate === todayStr;
+  const hourPillar = isSelectedToday ? dayData?.current_pillars?.hour : null;
 
   return (
     <ScrollView
@@ -463,6 +465,32 @@ export default function CalendarScreen() {
                 );
               })}
             </View>
+
+            {/* Hour Pillar — only for today */}
+            {isSelectedToday && hourPillar && (
+              <View style={styles.hourPillarSection}>
+                <View style={styles.hourPillarHeader}>
+                  <Text style={styles.hourPillarTitle}>時 PILAR JAM SAAT INI</Text>
+                  <TouchableOpacity
+                    style={styles.hourRefreshBtn}
+                    onPress={() => loadDayData(todayStr)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.hourRefreshBtnText}>↻ Refresh</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.hourPillarCard}>
+                  <View style={[styles.pillarAccent, { backgroundColor: STEM_COLOR[hourPillar.stem] ?? C.gold }]} />
+                  <Text style={styles.pillarPos}>時 JAM</Text>
+                  <Text style={[styles.pillarStem, { color: STEM_COLOR[hourPillar.stem] ?? C.gold }]}>{hourPillar.stem}</Text>
+                  <Text style={styles.pillarStemEl}>{STEM_ELEMENT[hourPillar.stem] ?? ''}</Text>
+                  <View style={styles.pillarDivider} />
+                  <Text style={styles.pillarBranch}>{hourPillar.branch}</Text>
+                  <Text style={styles.pillarAnimal}>{BRANCH_ANIMAL[hourPillar.branch] ?? ''}</Text>
+                  <Text style={styles.pillarBranchEl}>{BRANCH_ELEMENT[hourPillar.branch] ?? ''}</Text>
+                </View>
+              </View>
+            )}
 
             {/* Interactions */}
             {chartId && (
@@ -767,4 +795,21 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: C.border,
   },
   noChartText: { color: C.textMuted, textAlign: 'center', fontSize: 13, lineHeight: 22 },
+
+  // Hour pillar section
+  hourPillarSection: { marginBottom: 20 },
+  hourPillarHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8,
+  },
+  hourPillarTitle: { fontSize: 11, fontWeight: '800', color: C.textFaint, letterSpacing: 1.2 },
+  hourRefreshBtn: {
+    paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8,
+    borderWidth: 1, borderColor: C.gold + '88', backgroundColor: C.surfaceHigh,
+  },
+  hourRefreshBtnText: { fontSize: 11, fontWeight: '700', color: C.goldSoft },
+  hourPillarCard: {
+    width: '40%',
+    backgroundColor: C.surface, borderRadius: 14, overflow: 'hidden',
+    alignItems: 'center', paddingBottom: 12, borderWidth: 1.5, borderColor: C.gold + '55',
+  },
 });

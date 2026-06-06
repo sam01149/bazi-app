@@ -35,11 +35,11 @@ export default function InfoModal({ visible, title, subtitle, body, onClose }: P
 
 const styles = StyleSheet.create({
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.62)',
   },
   centerer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 28,

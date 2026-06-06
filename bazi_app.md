@@ -198,7 +198,7 @@ git push hf master:main
 
 ---
 
-## Status Saat Ini (2026-06-06 — update 8)
+## Status Saat Ini (2026-06-06 — update 9)
 
 ### Sudah Selesai ✅
 - Kalkulasi semua pilar (Year, Month, Day, Hour)
@@ -283,10 +283,20 @@ git push hf master:main
   - **Term Tooltips** (ProfileScreen): tombol ⓘ di 7 istilah teknis (Day Master, Empat Pilar, Ge Ju, Yong Shen, Stem Combo, Luck Pillars, Void Branches) → InfoModal penjelasan plain Indonesian
   - **InfoModal** (`src/components/InfoModal.tsx`): shared reusable modal component (fade overlay, card tema navy+gold, tap backdrop untuk tutup)
 
+- **Update 9 (2026-06-06) — P3 & P4 implementation:**
+  - Feat: **P3-A Multi-profil + Relationship Dynamics** — ChartContext direfactor ke array `StoredProfile[]` dengan migration legacy; ProfileScreen: profile switcher modal (rename/add/remove), compare modal (POST `/charts/compare`), narasi AI dinamika hubungan dua chart; `RELATIONSHIP_SYSTEM_PROMPT` + `generate_relationship_narasi` di cerebras.py; endpoint `POST /api/charts/compare`
+  - Feat: **P3-B Wish Timing "Kapan Waktu Terbaik?"** — tombol ⏰ muncul setelah analisis wish; GET `/api/wishes/{id}/timing?chart_id=` — build 6 bulan pillars ke depan, kirim ke AI; `WISH_TIMING_PROMPT` + `generate_wish_timing` di cerebras.py
+  - Feat: **P3-C Pilar Jam di Kalender** — card "時 PILAR JAM SAAT INI" di CalendarScreen hanya saat hari ini dipilih; ambil dari `current_pillars.hour`; manual refresh button
+  - Feat: **P3-D Special Stars (神煞)** — Gui Ren 贵人, Tao Hua 桃花, Yi Ma 驿马, Wen Chang 文昌, Gu Chen/Gua Su 孤辰/寡宿; lookup tables di `tables.py`; `get_special_stars()` di `calculator.py`; ditampilkan sebagai section 神煞 di ProfileScreen; `special_stars` field di ChartResponse
+  - Feat: **P3-E 12 Life Stages (十二运星)** — mapping start branch per Day Master + forward/reverse berdasarkan polaritas; `get_life_stage()` di `calculator.py`; ditampilkan di setiap kolom pilar + di setiap Luck Pillar card; `pillar_life_stages` + `life_stage` per LP di ChartResponse
+  - Feat: **P4-A Share/Export Chart** — tombol "↑ Bagikan Chart" di ProfileScreen; web: `navigator.share` atau clipboard; native: React Native Share API; format teks ringkasan 4 pilar + Ge Ju + Yong Shen
+  - Feat: **P4-C Unit Tests** — `backend/tests/test_calculator.py`: day pillar anchor, Joey Yap example, 60-day cycling, historical; year pillar before/after Li Chun; hour pillar midnight/noon; all 10 Ten Gods; Kong Wang; Ge Ju/Yong Shen; Luck Pillars count/ages/gap; Life Stages yang/yin; Special Stars Gui Ren/Tao Hua/Wen Chang
+  - Feat: **P4-E Onboarding Tutorial** — 3-slide fullscreen Modal di ProfileScreen; FlatList horizontal + indicator dots; Lewati/Lanjut/Mulai → buttons; flag `@bazi_onboarding_seen` di AsyncStorage; tampil sekali saja saat pertama install
+  - Fix: `InfoModal.tsx` — `StyleSheet.absoluteFillObject` → `StyleSheet.absoluteFill` (TypeScript error)
+
 ### Belum Ada / Known Issues ⚠️
-- **Tidak ada unit tests** — engine calculation belum ditest
 - **Alembic migrations belum setup** — pakai `create_all()` + inline ALTER TABLE di lifespan
-- **Tidak ada multi-user** — satu device = satu chart (tidak ada login/akun)
+- **Tidak ada multi-user server-side** — profil hanya di AsyncStorage lokal, tidak ada login/akun
 
 ---
 

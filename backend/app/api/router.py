@@ -12,6 +12,7 @@ from app.models.schemas import (
     NarasiGenerateRequest, PillarsSchema, PillarSchema,
     WishCreateRequest, WishResponse, WishAnalyzeRequest, WishUpdateRequest,
     ProfileResponse, CalendarNarasiRequest, LuckPillarSchema,
+    WishTimingRequest, ChartCompareRequest,
 )
 from app.models.domain import BaZiChart, TenGod, Wish, CachedNarasi, LuckPillar
 from app.engine.calculator import (
@@ -19,10 +20,15 @@ from app.engine.calculator import (
     get_ge_ju, get_yong_shen,
     get_hidden_stem_ten_gods, get_kong_wang,
     get_luck_pillars, get_active_luck_pillar,
+    get_special_stars, get_life_stage,
 )
 from app.engine.interactions import detect_calendar_interactions, detect_stem_combinations
 from app.engine.tables import HEAVENLY_STEMS_ELEMENT, HEAVENLY_STEMS_POLARITY
-from app.services.cerebras import generate_narasi, generate_wish_analysis, generate_calendar_narasi, generate_annual_narasi, is_error_narasi
+from app.services.cerebras import (
+    generate_narasi, generate_wish_analysis, generate_calendar_narasi,
+    generate_annual_narasi, is_error_narasi,
+    generate_wish_timing, generate_relationship_narasi,
+)
 
 router = APIRouter()
 
@@ -51,9 +57,24 @@ def _build_chart_response(
     luck_pillars_list: list = None,
 ) -> ChartResponse:
     pillars = _pillars_dict(db_chart)
-    void_branches = get_kong_wang(db_chart.day_stem, db_chart.day_branch)
+    day_stem = db_chart.day_stem
+    void_branches = get_kong_wang(day_stem, db_chart.day_branch)
     stem_combinations = detect_stem_combinations(pillars)
-    hidden_ten_gods = get_hidden_stem_ten_gods(pillars, db_chart.day_stem)
+    hidden_ten_gods = get_hidden_stem_ten_gods(pillars, day_stem)
+
+    # Special stars
+    natal_branches = [
+        db_chart.year_branch, db_chart.month_branch,
+        db_chart.day_branch, db_chart.hour_branch or "",
+    ]
+    special_stars = get_special_stars(day_stem, db_chart.year_branch, natal_branches)
+
+    # Life stages per pillar
+    pillar_life_stages = {
+        pos: get_life_stage(day_stem, pillars[pos]["branch"])
+        for pos in ("year", "month", "day", "hour")
+        if pillars[pos]["branch"]
+    }
 
     lp_schemas: list[LuckPillarSchema] = []
     if luck_pillars_list:
@@ -63,6 +84,7 @@ def _build_chart_response(
                 branch=lp.branch,
                 age_start=float(lp.age_start),
                 order_index=int(lp.order_index),
+                life_stage=get_life_stage(day_stem, lp.branch),
             )
             for lp in sorted(luck_pillars_list, key=lambda x: x.order_index)
         ]
@@ -77,7 +99,10 @@ def _build_chart_response(
             birth_aware,
         )
         if active_dict:
-            active_lp = LuckPillarSchema(**active_dict)
+            active_lp = LuckPillarSchema(
+                **active_dict,
+                life_stage=get_life_stage(day_stem, active_dict["branch"]),
+            )
 
     return ChartResponse(
         id=db_chart.id,
@@ -96,6 +121,8 @@ def _build_chart_response(
         luck_pillars=lp_schemas or None,
         active_luck_pillar=active_lp,
         hour_unknown=db_chart.hour_unknown or False,
+        special_stars=special_stars or None,
+        pillar_life_stages=pillar_life_stages or None,
     )
 
 
@@ -552,6 +579,74 @@ async def analyze_wish(wish_id: str, req: WishAnalyzeRequest, db: AsyncSession =
     await db.commit()
     await db.refresh(wish)
     return wish
+
+
+@router.get("/wishes/{wish_id}/timing")
+async def get_wish_timing(wish_id: str, chart_id: str, db: AsyncSession = Depends(get_db)):
+    stmt = select(Wish).where(Wish.id == wish_id)
+    result = await db.execute(stmt)
+    wish = result.scalars().first()
+    if not wish:
+        raise HTTPException(status_code=404, detail="Wish not found")
+
+    chart_stmt = (
+        select(BaZiChart)
+        .where(BaZiChart.id == chart_id)
+        .options(selectinload(BaZiChart.ten_gods), selectinload(BaZiChart.luck_pillars))
+    )
+    chart_result = await db.execute(chart_stmt)
+    db_chart = chart_result.scalars().first()
+    if not db_chart:
+        raise HTTPException(status_code=404, detail="Chart not found")
+
+    ten_gods_map = {tg.position: tg.ten_god for tg in db_chart.ten_gods if tg.stem_or_branch == "stem"}
+    chart_dict = _build_chart_dict(db_chart, ten_gods_map, db_chart.luck_pillars)
+
+    # Build upcoming months data (6 months from today)
+    now_utc = datetime.now(pytz.UTC)
+    tz = pytz.timezone(db_chart.birth_timezone)
+    upcoming_months = []
+    for i in range(6):
+        m_offset = now_utc.month - 1 + i
+        yr = now_utc.year + m_offset // 12
+        mo = m_offset % 12 + 1
+        dt_m = tz.localize(datetime(yr, mo, 15, 12, 0))
+        from app.engine.calculator import get_bazi_chart as _gc
+        cal_m = _gc(dt_m)
+        upcoming_months.append({
+            "year": yr,
+            "month": mo,
+            "stem": cal_m["pillars"]["month"]["stem"],
+            "branch": cal_m["pillars"]["month"]["branch"],
+        })
+
+    timing = await generate_wish_timing(chart_dict, wish.content, upcoming_months)
+    return {"timing": timing}
+
+
+@router.post("/charts/compare")
+async def compare_charts(req: ChartCompareRequest, db: AsyncSession = Depends(get_db)):
+    async def _load(cid: str):
+        stmt = (
+            select(BaZiChart).where(BaZiChart.id == cid)
+            .options(selectinload(BaZiChart.ten_gods), selectinload(BaZiChart.luck_pillars))
+        )
+        res = await db.execute(stmt)
+        return res.scalars().first()
+
+    chart_a = await _load(req.chart_id_a)
+    chart_b = await _load(req.chart_id_b)
+    if not chart_a:
+        raise HTTPException(status_code=404, detail="chart_id_a not found")
+    if not chart_b:
+        raise HTTPException(status_code=404, detail="chart_id_b not found")
+
+    def _chart_payload(ch: BaZiChart) -> dict:
+        tg_map = {tg.position: tg.ten_god for tg in ch.ten_gods if tg.stem_or_branch == "stem"}
+        return _build_chart_dict(ch, tg_map, ch.luck_pillars)
+
+    narasi = await generate_relationship_narasi(_chart_payload(chart_a), _chart_payload(chart_b))
+    return {"narasi": narasi}
 
 
 # ─── Solar Terms ──────────────────────────────────────────────────────────────

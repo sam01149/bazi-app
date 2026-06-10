@@ -1214,20 +1214,32 @@ export default function ProfileScreen() {
           </View>
 
           {/* Notification toggle */}
-          <TouchableOpacity
-            style={styles.notifRow}
-            onPress={toggleNotification}
-            activeOpacity={0.8}
-            disabled={notifLoading}
-          >
-            <View>
-              <Text style={styles.notifLabel}>Notifikasi Harian</Text>
-              <Text style={styles.notifSub}>Pengingat pukul 0{NOTIF_HOUR}.00 setiap hari</Text>
+          {Platform.OS === 'web' ? (
+            <View style={[styles.notifRow, { opacity: 0.45 }]}>
+              <View>
+                <Text style={styles.notifLabel}>Notifikasi Harian</Text>
+                <Text style={styles.notifSub}>Hanya tersedia di aplikasi mobile</Text>
+              </View>
+              <View style={styles.notifPill}>
+                <View style={styles.notifThumb} />
+              </View>
             </View>
-            <View style={[styles.notifPill, notifEnabled && styles.notifPillOn]}>
-              <View style={[styles.notifThumb, notifEnabled && styles.notifThumbOn]} />
-            </View>
-          </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.notifRow}
+              onPress={toggleNotification}
+              activeOpacity={0.8}
+              disabled={notifLoading}
+            >
+              <View>
+                <Text style={styles.notifLabel}>Notifikasi Harian</Text>
+                <Text style={styles.notifSub}>Pengingat pukul 0{NOTIF_HOUR}.00 setiap hari</Text>
+              </View>
+              <View style={[styles.notifPill, notifEnabled && styles.notifPillOn]}>
+                <View style={[styles.notifThumb, notifEnabled && styles.notifThumbOn]} />
+              </View>
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity style={styles.resetBtn} onPress={confirmReset} activeOpacity={0.8}>
             <Text style={styles.resetBtnText}>Reset Profil</Text>

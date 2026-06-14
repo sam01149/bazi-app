@@ -13,9 +13,9 @@ import { C } from './src/theme';
 const Tab = createBottomTabNavigator();
 
 const TAB_CONFIG = [
-  { name: 'Kalender',  label: 'Kalender',   icon: '⊞', component: CalendarScreen },
-  { name: 'Keinginan', label: 'Keinginan',  icon: '✦', component: WishScreen    },
-  { name: 'Profil',    label: 'Profil',     icon: '◉', component: ProfileScreen  },
+  { name: 'Kalender',  label: 'Hari Ini',   icon: '⊞', component: CalendarScreen },
+  { name: 'Keinginan', label: 'Tujuan',     icon: '✦', component: WishScreen    },
+  { name: 'Profil',    label: 'Peta Hidup', icon: '◉', component: ProfileScreen  },
 ];
 
 function TabIcon({ icon, focused }: { icon: string; focused: boolean }) {

@@ -27,10 +27,10 @@ const MONTHS_ID = [
 ];
 
 const INTERACTION_META: Record<string, { label: string; color: string; icon: string }> = {
-  clash:           { label: 'Benturan',     color: C.red,   icon: '⚡' },
+  clash:           { label: 'Benturan',     color: C.terra, icon: '⚡' },
   six_combination: { label: 'Kombinasi',    color: C.teal,  icon: '◎' },
   harm:            { label: 'Hambatan',     color: C.amber, icon: '◌' },
-  penalty:         { label: 'Hukuman',      color: C.red,   icon: '△' },
+  penalty:         { label: 'Hukuman',      color: C.terra, icon: '△' },
   self_penalty:    { label: 'Hukuman Diri', color: C.amber, icon: '△' },
 };
 
@@ -86,7 +86,7 @@ function getEnergyStatus(interactions: any[]): EnergyStatus {
   const hasCombination    = types.some(t => t === 'six_combination');
 
   if (hasClashOrPenalty) return {
-    level: 'challenging', color: C.red, label: 'Hari Penuh Tekanan',
+    level: 'challenging', color: C.terra, label: 'Hari Penuh Tekanan',
     summary: 'Ada gesekan energi hari ini. Hindari keputusan besar, jaga emosi tetap stabil.',
   };
   if (hasHarm) return {
@@ -359,7 +359,7 @@ export default function CalendarScreen() {
       {/* ── Week-day header ── */}
       <View style={styles.weekRow}>
         {DAYS_ID.map((d, i) => (
-          <Text key={d} style={[styles.weekLabel, i === 0 && { color: C.red }]}>{d}</Text>
+          <Text key={d} style={[styles.weekLabel, i === 0 && { color: C.terra }]}>{d}</Text>
         ))}
       </View>
 
@@ -385,7 +385,7 @@ export default function CalendarScreen() {
             >
               <Text style={[
                 styles.dayNum,
-                isSunday   && { color: C.red },
+                isSunday   && { color: C.terra },
                 isToday    && { color: C.bg, fontWeight: '900' },
                 isSelected && !isToday && { color: C.goldSoft },
               ]}>
@@ -568,7 +568,7 @@ export default function CalendarScreen() {
             {!chartId && (
               <View style={styles.noChartCard}>
                 <Text style={styles.noChartText}>
-                  Buat profil BaZi di tab Profil untuk melihat interaksi energi harianmu.
+                  Buat profil BaZi di tab Peta Hidup untuk melihat interaksi energi harianmu.
                 </Text>
               </View>
             )}
@@ -740,15 +740,15 @@ const styles = StyleSheet.create({
     marginTop: 5, paddingTop: 5, borderTopWidth: 1, borderTopColor: C.border,
   },
   antidoteBox: {
-    marginTop: 8,
-    backgroundColor: C.teal + '15',
-    borderRadius: 8,
-    padding: 10,
-    borderLeftWidth: 2,
-    borderLeftColor: C.teal,
+    marginTop: 10,
+    backgroundColor: C.teal + '1A',
+    borderRadius: 10,
+    padding: 13,
+    borderWidth: 1,
+    borderColor: C.teal + '55',
   },
-  antidoteLabel: { fontSize: 10, fontWeight: '900', color: C.teal, letterSpacing: 0.5, marginBottom: 4 },
-  antidoteText:  { fontSize: 12, color: C.text, lineHeight: 19 },
+  antidoteLabel: { fontSize: 11, fontWeight: '900', color: C.teal, letterSpacing: 0.6, marginBottom: 6 },
+  antidoteText:  { fontSize: 13, color: C.text, lineHeight: 21 },
 
   emptyCard: {
     backgroundColor: C.surface, borderRadius: 12, padding: 20, alignItems: 'center',

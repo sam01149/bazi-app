@@ -901,7 +901,7 @@ export default function ProfileScreen() {
             const geJu    = chartData.ge_ju;
             const yongShen = chartData.yong_shen;
             return (
-              <View style={[styles.dayMasterCard, { borderColor: stemCol }]}>
+              <View style={[styles.dayMasterCard, { borderColor: stemCol, backgroundColor: stemCol + '12' }]}>
                 <Text style={[styles.dayMasterChar, { color: stemCol }]}>{dayStem}</Text>
                 <View style={styles.dayMasterInfo}>
                   <Text style={styles.dayMasterEl}>{stemEl}</Text>

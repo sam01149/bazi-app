@@ -10,7 +10,7 @@ Aplikasi mobile interpreter BaZi (四柱/八字) untuk pengguna non-praktisi. Us
 
 | Layer | Tech |
 |-------|------|
-| Mobile | React Native 0.85.3, Expo 56.0.3, TypeScript, React Navigation 7 |
+| Mobile | React Native 0.85.3, Expo 56.0.3, TypeScript, React Navigation 7 (tabs: Hari Ini / Tujuan / Peta Hidup) |
 | Backend | Python FastAPI, SQLAlchemy async, Supabase PostgreSQL (prod) / SQLite (dev), uvicorn |
 | Astronomi | pyswisseph (solar terms akurat) |
 | AI | SambaNova (primary: DeepSeek-V3-0324) + Cerebras (fallback) |

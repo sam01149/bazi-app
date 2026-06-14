@@ -9,6 +9,7 @@ export const C = {
   textMuted:   '#6E8EBE',
   textFaint:   '#3A5285',
   red:         '#E05252',
+  terra:       '#C0614D',
   teal:        '#2EC4B0',
   amber:       '#E09030',
 };

@@ -73,7 +73,7 @@ Self app/
 | `GET`  | `/api/calendar/date/{YYYY-MM-DD}?timezone=&chart_id=` | Pilar tanggal tertentu + interaksi |
 | `GET`  | `/api/profile/{chart_id}` | Chart + semua cached narasi sections |
 | `POST` | `/api/narasi/generate` | Generate narasi AI (cached ke DB setelah pertama) |
-| `POST` | `/api/calendar/narasi` | Narasi AI interaksi chart vs tanggal kalender (tidak di-cache) |
+| `POST` | `/api/calendar/narasi` | Narasi AI interaksi chart vs tanggal kalender (di-cache per chart+date di DB) |
 | `POST` | `/api/wishes` | Simpan keinginan baru |
 | `GET`  | `/api/wishes?chart_id=` | List semua keinginan user |
 | `DELETE` | `/api/wishes/{wish_id}` | Hapus keinginan |

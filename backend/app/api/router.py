@@ -375,6 +375,17 @@ async def get_calendar_narasi(req: CalendarNarasiRequest, db: AsyncSession = Dep
     if not db_chart:
         raise HTTPException(status_code=404, detail="Chart not found")
 
+    # Return cached narasi for this chart+date combo to avoid redundant AI calls
+    cache_section = f"cal_{req.date_str}"
+    cached_stmt = select(CachedNarasi).where(
+        CachedNarasi.chart_id == req.chart_id,
+        CachedNarasi.section == cache_section,
+    )
+    cached_result = await db.execute(cached_stmt)
+    cached = cached_result.scalars().first()
+    if cached and not is_error_narasi(cached.narasi_text):
+        return {"narasi": cached.narasi_text}
+
     try:
         tz = pytz.timezone(req.timezone)
     except pytz.UnknownTimeZoneError:
@@ -421,6 +432,12 @@ async def get_calendar_narasi(req: CalendarNarasiRequest, db: AsyncSession = Dep
     if is_error_narasi(narasi):
         msg = narasi.replace("ERROR: ", "", 1)
         raise HTTPException(status_code=503, detail=msg)
+
+    if cached:
+        cached.narasi_text = narasi
+    else:
+        db.add(CachedNarasi(chart_id=req.chart_id, section=cache_section, narasi_text=narasi))
+    await db.commit()
 
     return {"narasi": narasi}
 

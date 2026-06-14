@@ -589,6 +589,23 @@ export default function ProfileScreen() {
           </View>
         </Modal>
 
+        {/* Back button — only shown when previous profiles exist */}
+        {profiles.some(p => p.chartId) && (
+          <TouchableOpacity
+            style={styles.setupBackBtn}
+            onPress={async () => {
+              await removeActiveProfile();
+              setChartData(null);
+              setCachedSections({});
+              setNarasi('');
+              setActiveSection('');
+            }}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.setupBackBtnText}>← Kembali ke profil sebelumnya</Text>
+          </TouchableOpacity>
+        )}
+
         <View style={styles.setupHero}>
           <Image source={require('../../assets/logo.png')} style={{ width: 72, height: 72, borderRadius: 18, marginBottom: 16 }} />
           <Text style={styles.setupTitle}>BaZi Chart</Text>
@@ -779,12 +796,26 @@ export default function ProfileScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.addProfileBtn}
-                onPress={async () => {
-                  await addNewProfile();
-                  setChartData(null);
-                  setCachedSections({});
-                  setNarasi('');
-                  setActiveSection('');
+                onPress={() => {
+                  const doAdd = async () => {
+                    await addNewProfile();
+                    setChartData(null);
+                    setCachedSections({});
+                    setNarasi('');
+                    setActiveSection('');
+                  };
+                  if (Platform.OS === 'web') {
+                    if (window.confirm('Buat profil baru?\n\nKamu bisa kembali ke profil sebelumnya kapan saja.')) doAdd();
+                  } else {
+                    Alert.alert(
+                      'Profil Baru',
+                      'Buat profil baru? Kamu bisa kembali ke profil sebelumnya kapan saja.',
+                      [
+                        { text: 'Batal', style: 'cancel' },
+                        { text: 'Buat Profil Baru', onPress: doAdd },
+                      ]
+                    );
+                  }
                 }}
                 activeOpacity={0.8}
               >
@@ -1387,6 +1418,11 @@ const styles = StyleSheet.create({
 
   // ── Setup ──
   setupContainer: { paddingHorizontal: 20, paddingBottom: 48, paddingTop: 24 },
+  setupBackBtn: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 10, marginBottom: 8,
+  },
+  setupBackBtnText: { fontSize: 14, color: C.gold, fontWeight: '700' },
   setupHero:   { alignItems: 'center', marginBottom: 28 },
   setupTitle:    { fontSize: 28, fontWeight: '900', color: C.text, letterSpacing: 0.5 },
   setupSubtitle: { fontSize: 14, color: C.textMuted, textAlign: 'center', marginTop: 8, lineHeight: 22, maxWidth: 280 },

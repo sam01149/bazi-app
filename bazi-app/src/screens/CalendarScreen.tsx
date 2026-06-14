@@ -8,6 +8,7 @@ import { API_URL } from '../config';
 import { useChart } from '../context/ChartContext';
 import { C, STEM_COLOR, STEM_ELEMENT, BRANCH_ANIMAL, BRANCH_ELEMENT } from '../theme';
 import InfoModal from '../components/InfoModal';
+import { useSimpleMode } from '../context/SimpleModeContext';
 
 function utcToLocalDateStr(utcStr: string, tz: string): string {
   try {
@@ -140,8 +141,17 @@ interface AnnualData {
   narasi: string;
 }
 
+function getGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return 'Selamat pagi';
+  if (h < 15) return 'Selamat siang';
+  if (h < 19) return 'Selamat sore';
+  return 'Selamat malam';
+}
+
 export default function CalendarScreen() {
-  const { chartId, timezone, loading: ctxLoading } = useChart();
+  const { chartId, timezone, loading: ctxLoading, profiles, activeProfileIdx } = useChart();
+  const { simpleMode } = useSimpleMode();
   const today = new Date();
   const todayStr = today.toISOString().split('T')[0];
 
@@ -160,6 +170,9 @@ export default function CalendarScreen() {
   const fetchedYearsRef = useRef<Set<number>>(new Set());
 
   const [solarTermModal, setSolarTermModal] = useState<(SolarTermInfo & { name: string }) | null>(null);
+
+  // Active luck pillar for greeting card
+  const [activeLp, setActiveLp] = useState<any>(null);
 
   // Annual section
   const [annualExpanded, setAnnualExpanded] = useState(false);
@@ -181,6 +194,13 @@ export default function CalendarScreen() {
       // solar terms are decorative; fail silently
     }
   }, [timezone]);
+
+  useEffect(() => {
+    if (!chartId) { setActiveLp(null); return; }
+    axios.get(`${API_URL}/charts/${chartId}`)
+      .then(res => setActiveLp(res.data.active_luck_pillar ?? null))
+      .catch(() => {});
+  }, [chartId]);
 
   const loadCalNarasi = useCallback(async (dateStr: string) => {
     if (!chartId) return;
@@ -303,6 +323,28 @@ export default function CalendarScreen() {
       contentContainerStyle={styles.container}
       showsVerticalScrollIndicator={false}
     >
+      {/* ── Greeting Card ── */}
+      {chartId && (
+        <View style={styles.greetingCard}>
+          <View style={styles.greetingTop}>
+            <Text style={styles.greetingHello}>{getGreeting()},</Text>
+            <Text style={styles.greetingName} numberOfLines={1}>
+              {profiles[activeProfileIdx]?.nickname ?? 'Sobat BaZi'}
+            </Text>
+          </View>
+          {activeLp && (
+            <View style={styles.greetingLpRow}>
+              <Text style={styles.greetingLpLabel}>Siklus Dekade Aktif</Text>
+              <Text style={styles.greetingLpChars}>
+                <Text style={{ color: STEM_COLOR[activeLp.stem] ?? C.gold }}>{activeLp.stem}</Text>
+                <Text style={{ color: C.text }}>{activeLp.branch}</Text>
+                <Text style={{ color: C.textFaint }}>  ·  mulai usia {Math.round(activeLp.age_start)} tahun</Text>
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
+
       {/* ── Annual section (collapsed by default) ── */}
       {chartId && (
         <TouchableOpacity
@@ -455,12 +497,24 @@ export default function CalendarScreen() {
                   <View key={p} style={styles.pillarCard}>
                     <View style={[styles.pillarAccent, { backgroundColor: stemCol }]} />
                     <Text style={styles.pillarPos}>{posLabel}</Text>
-                    <Text style={[styles.pillarStem, { color: stemCol }]}>{stem}</Text>
-                    <Text style={styles.pillarStemEl}>{stemEl}</Text>
+                    {simpleMode ? (
+                      <Text style={[styles.pillarStemSimple, { color: stemCol }]}>{stemEl}</Text>
+                    ) : (
+                      <>
+                        <Text style={[styles.pillarStem, { color: stemCol }]}>{stem}</Text>
+                        <Text style={styles.pillarStemEl}>{stemEl}</Text>
+                      </>
+                    )}
                     <View style={styles.pillarDivider} />
-                    <Text style={styles.pillarBranch}>{branch}</Text>
-                    <Text style={styles.pillarAnimal}>{animal}</Text>
-                    <Text style={styles.pillarBranchEl}>{branchEl}</Text>
+                    {simpleMode ? (
+                      <Text style={styles.pillarBranchSimple}>{animal}</Text>
+                    ) : (
+                      <>
+                        <Text style={styles.pillarBranch}>{branch}</Text>
+                        <Text style={styles.pillarAnimal}>{animal}</Text>
+                        <Text style={styles.pillarBranchEl}>{branchEl}</Text>
+                      </>
+                    )}
                   </View>
                 );
               })}
@@ -482,12 +536,26 @@ export default function CalendarScreen() {
                 <View style={styles.hourPillarCard}>
                   <View style={[styles.pillarAccent, { backgroundColor: STEM_COLOR[hourPillar.stem] ?? C.gold }]} />
                   <Text style={styles.pillarPos}>時 JAM</Text>
-                  <Text style={[styles.pillarStem, { color: STEM_COLOR[hourPillar.stem] ?? C.gold }]}>{hourPillar.stem}</Text>
-                  <Text style={styles.pillarStemEl}>{STEM_ELEMENT[hourPillar.stem] ?? ''}</Text>
+                  {simpleMode ? (
+                    <Text style={[styles.pillarStemSimple, { color: STEM_COLOR[hourPillar.stem] ?? C.gold }]}>
+                      {STEM_ELEMENT[hourPillar.stem] ?? hourPillar.stem}
+                    </Text>
+                  ) : (
+                    <>
+                      <Text style={[styles.pillarStem, { color: STEM_COLOR[hourPillar.stem] ?? C.gold }]}>{hourPillar.stem}</Text>
+                      <Text style={styles.pillarStemEl}>{STEM_ELEMENT[hourPillar.stem] ?? ''}</Text>
+                    </>
+                  )}
                   <View style={styles.pillarDivider} />
-                  <Text style={styles.pillarBranch}>{hourPillar.branch}</Text>
-                  <Text style={styles.pillarAnimal}>{BRANCH_ANIMAL[hourPillar.branch] ?? ''}</Text>
-                  <Text style={styles.pillarBranchEl}>{BRANCH_ELEMENT[hourPillar.branch] ?? ''}</Text>
+                  {simpleMode ? (
+                    <Text style={styles.pillarBranchSimple}>{BRANCH_ANIMAL[hourPillar.branch] ?? hourPillar.branch}</Text>
+                  ) : (
+                    <>
+                      <Text style={styles.pillarBranch}>{hourPillar.branch}</Text>
+                      <Text style={styles.pillarAnimal}>{BRANCH_ANIMAL[hourPillar.branch] ?? ''}</Text>
+                      <Text style={styles.pillarBranchEl}>{BRANCH_ELEMENT[hourPillar.branch] ?? ''}</Text>
+                    </>
+                  )}
                 </View>
               </View>
             )}
@@ -593,6 +661,26 @@ export default function CalendarScreen() {
 const styles = StyleSheet.create({
   root:      { flex: 1, backgroundColor: C.bg },
   container: { paddingHorizontal: 16, paddingBottom: 48, paddingTop: 8 },
+
+  // Greeting card
+  greetingCard: {
+    backgroundColor: C.surface,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: C.gold + '44',
+  },
+  greetingTop:  { marginBottom: 10 },
+  greetingHello:{ fontSize: 13, color: C.textMuted, fontWeight: '600' },
+  greetingName: { fontSize: 22, fontWeight: '900', color: C.gold, marginTop: 2 },
+  greetingLpRow:{ borderTopWidth: 1, borderTopColor: C.border, paddingTop: 10 },
+  greetingLpLabel: { fontSize: 10, fontWeight: '800', color: C.textFaint, letterSpacing: 1, marginBottom: 4 },
+  greetingLpChars: { fontSize: 18, fontWeight: '700' },
+
+  // Simple mode pillar styles (text instead of Hanzi)
+  pillarStemSimple:   { fontSize: 13, fontWeight: '800', lineHeight: 18, textAlign: 'center', paddingHorizontal: 2 },
+  pillarBranchSimple: { fontSize: 14, fontWeight: '800', color: C.text, marginTop: 2, textAlign: 'center' },
 
   // Annual section
   annualHeader: {

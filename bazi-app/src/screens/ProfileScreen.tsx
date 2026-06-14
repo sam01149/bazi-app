@@ -8,6 +8,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { API_URL } from '../config';
 import { useChart } from '../context/ChartContext';
+import { useSimpleMode } from '../context/SimpleModeContext';
 import { C, STEM_COLOR, STEM_ELEMENT, BRANCH_ANIMAL } from '../theme';
 import InfoModal from '../components/InfoModal';
 
@@ -107,8 +108,29 @@ const PILLAR_LABEL: Record<string, string> = {
 };
 
 const NARASI_SECTIONS = [
-  { key: 'full_analysis', label: 'Analisis Lengkap', icon: '◉' },
+  { key: 'full_analysis_v2', label: 'Kenali Dirimu', icon: '◉' },
 ];
+
+const STORY_SECTION_META: Record<string, { title: string; subtitle: string }> = {
+  karakter_inti:        { title: 'Karakter Inti',       subtitle: 'Siapa kamu secara energetik' },
+  keseimbangan_elemen:  { title: 'Keseimbangan Elemen', subtitle: 'Yang mendukung & melemahkanmu' },
+  kekuatan_dan_jebakan: { title: 'Kekuatan & Jebakan',  subtitle: 'Aset dan pola sabotase diri' },
+  arena_karir:          { title: 'Arena & Karir',        subtitle: 'Lingkungan dan gaya produktifmu' },
+  siklus_aktif:         { title: 'Siklus Aktif',         subtitle: 'Tema dekade saat ini' },
+};
+
+function parseStorySections(text: string): { key: string; title: string; subtitle: string; content: string }[] {
+  const results: { key: string; title: string; subtitle: string; content: string }[] = [];
+  const regex = /SECTION:(\w+)\n([\s\S]*?)(?=SECTION:|Snapshot:|$)/g;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    const key = match[1];
+    const content = match[2].trim();
+    const meta = STORY_SECTION_META[key];
+    if (meta && content) results.push({ key, ...meta, content });
+  }
+  return results;
+}
 
 const APPROX_TIMES = [
   { label: 'Dini Hari / Tahajud', sub: '00:00–03:59', value: '02:00', pillar: '丑' },
@@ -210,6 +232,10 @@ export default function ProfileScreen() {
   const [narasiLoading,  setNarasiLoading]  = useState(false);
   const [narasi,         setNarasi]         = useState('');
   const [infoTopic,      setInfoTopic]      = useState<TermKey | ''>('');
+
+  const { simpleMode, toggleSimpleMode } = useSimpleMode();
+  const [storyCardIdx, setStoryCardIdx] = useState(0);
+  const storyFlatRef = useRef<FlatList>(null);
 
   const scrollRef   = useRef<ScrollView>(null);
   const narasiBoxY  = useRef<number>(0);
@@ -720,7 +746,7 @@ export default function ProfileScreen() {
   const pillarLifeStages: Record<string, string> = chartData?.pillar_life_stages ?? {};
 
   const snapshotParts = (() => {
-    const text = cachedSections['full_analysis'] ?? narasi;
+    const text = cachedSections['full_analysis_v2'] ?? cachedSections['full_analysis'] ?? narasi;
     return text ? parseSnapshot(text) : null;
   })();
 
@@ -902,7 +928,9 @@ export default function ProfileScreen() {
             const yongShen = chartData.yong_shen;
             return (
               <View style={[styles.dayMasterCard, { borderColor: stemCol, backgroundColor: stemCol + '12' }]}>
-                <Text style={[styles.dayMasterChar, { color: stemCol }]}>{dayStem}</Text>
+                <Text style={[styles.dayMasterChar, { color: stemCol }]}>
+                  {simpleMode ? (stemEl || dayStem) : dayStem}
+                </Text>
                 <View style={styles.dayMasterInfo}>
                   <Text style={styles.dayMasterEl}>{stemEl}</Text>
                   <View style={styles.dayMasterLabelRow}>
@@ -918,7 +946,9 @@ export default function ProfileScreen() {
                     {geJu && (
                       <TouchableOpacity onPress={() => setInfoTopic('ge_ju')} activeOpacity={0.75}>
                         <View style={styles.geJuBadge}>
-                          <Text style={styles.geJuText}>{geJu} ⓘ</Text>
+                          <Text style={styles.geJuText}>
+                            {simpleMode ? `Pola Dominan ⓘ` : `${geJu} ⓘ`}
+                          </Text>
                         </View>
                       </TouchableOpacity>
                     )}
@@ -926,7 +956,7 @@ export default function ProfileScreen() {
                   {yongShen && (
                     <TouchableOpacity onPress={() => setInfoTopic('yong_shen')} activeOpacity={0.75}>
                       <Text style={styles.yongShenRow}>
-                        <Text style={styles.yongShenLabel}>用神 </Text>
+                        <Text style={styles.yongShenLabel}>{simpleMode ? 'Elemen Andalan ' : '用神 '}</Text>
                         <Text style={styles.yongShenValue}>{yongShen} ⓘ</Text>
                       </Text>
                     </TouchableOpacity>
@@ -970,23 +1000,35 @@ export default function ProfileScreen() {
               return (
                 <View key={p} style={[styles.pillarCol, isDay && { backgroundColor: C.surfaceHigh }]}>
                   <Text style={styles.pillarColLabel}>{PILLAR_LABEL[p]}</Text>
-                  <Text style={[styles.pillarColStem, { color: isDay ? C.goldSoft : stemCol }]}>{stem}</Text>
+                  {simpleMode ? (
+                    <Text style={[styles.pillarStemSimple, { color: isDay ? C.goldSoft : stemCol }]}>
+                      {STEM_ELEMENT[stem] ?? stem}
+                    </Text>
+                  ) : (
+                    <Text style={[styles.pillarColStem, { color: isDay ? C.goldSoft : stemCol }]}>{stem}</Text>
+                  )}
                   <View style={[styles.pillarColDivider, { borderColor: isDay ? C.gold : C.border }]} />
                   <View style={{ position: 'relative', alignItems: 'center' }}>
-                    <Text style={[styles.pillarColBranch, isDay && { color: C.goldSoft }, isVoid && styles.voidBranchText]}>
-                      {branch}
-                    </Text>
+                    {simpleMode ? (
+                      <Text style={[styles.pillarBranchSimple, isDay && { color: C.goldSoft }, isVoid && styles.voidBranchText]}>
+                        {BRANCH_ANIMAL[branch] ?? branch}
+                      </Text>
+                    ) : (
+                      <Text style={[styles.pillarColBranch, isDay && { color: C.goldSoft }, isVoid && styles.voidBranchText]}>
+                        {branch}
+                      </Text>
+                    )}
                     {isVoid && (
                       <View style={styles.voidBadge}>
                         <Text style={styles.voidBadgeText}>空</Text>
                       </View>
                     )}
                   </View>
-                  <Text style={styles.pillarColAnimal}>{animal}</Text>
+                  <Text style={styles.pillarColAnimal}>{simpleMode ? '' : animal}</Text>
                   <Text style={[styles.pillarColGod, { color: isDay ? C.gold : C.textMuted }]}>{tenGod}</Text>
                   {dominantHidden && (
                     <Text style={styles.pillarColHiddenGod} numberOfLines={1}>
-                      藏{dominantHidden.ten_god}
+                      {simpleMode ? `~${dominantHidden.ten_god}` : `藏${dominantHidden.ten_god}`}
                     </Text>
                   )}
                   {lifeStage && (
@@ -1011,7 +1053,7 @@ export default function ProfileScreen() {
           {stemCombos.length > 0 && (
             <>
               <View style={styles.sectionLabelRow}>
-                <Text style={styles.sectionLabel}>天干合 STEM COMBINATIONS</Text>
+                <Text style={styles.sectionLabel}>{simpleMode ? 'KOMBINASI ENERGI' : '天干合 STEM COMBINATIONS'}</Text>
                 {info('stem_combo')}
               </View>
               <View style={styles.comboCard}>
@@ -1035,7 +1077,7 @@ export default function ProfileScreen() {
           {luckPillars.length > 0 ? (
             <>
               <View style={styles.sectionLabelRow}>
-                <Text style={styles.sectionLabel}>大運 LUCK PILLARS</Text>
+                <Text style={styles.sectionLabel}>{simpleMode ? 'SIKLUS 10 TAHUNAN' : '大運 LUCK PILLARS'}</Text>
                 {info('luck_pillars')}
               </View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.lpScroll} contentContainerStyle={styles.lpScrollContent}>
@@ -1045,9 +1087,21 @@ export default function ProfileScreen() {
                   return (
                     <View key={idx} style={[styles.lpCard, isActive && styles.lpCardActive]}>
                       {isActive && <Text style={styles.lpActiveTag}>AKTIF</Text>}
-                      <Text style={[styles.lpStem, { color: isActive ? stemCol : C.textMuted }]}>{lp.stem}</Text>
+                      {simpleMode ? (
+                        <Text style={[styles.pillarStemSimple, { color: isActive ? stemCol : C.textMuted }]}>
+                          {STEM_ELEMENT[lp.stem] ?? lp.stem}
+                        </Text>
+                      ) : (
+                        <Text style={[styles.lpStem, { color: isActive ? stemCol : C.textMuted }]}>{lp.stem}</Text>
+                      )}
                       <View style={[styles.lpDivider, { borderColor: isActive ? C.gold : C.border }]} />
-                      <Text style={[styles.lpBranch, isActive && { color: C.goldSoft }]}>{lp.branch}</Text>
+                      {simpleMode ? (
+                        <Text style={[styles.pillarBranchSimple, isActive && { color: C.goldSoft }]}>
+                          {BRANCH_ANIMAL[lp.branch] ?? lp.branch}
+                        </Text>
+                      ) : (
+                        <Text style={[styles.lpBranch, isActive && { color: C.goldSoft }]}>{lp.branch}</Text>
+                      )}
                       <Text style={[styles.lpAge, isActive && { color: C.gold }]}>{lp.age_start}岁</Text>
                       {lp.life_stage && (
                         <Text style={[styles.lpLifeStage, isActive && { color: C.amber }]} numberOfLines={1}>
@@ -1061,7 +1115,7 @@ export default function ProfileScreen() {
             </>
           ) : (
             <View style={styles.lpMissingCard}>
-              <Text style={styles.lpMissingTitle}>大運 Luck Pillars tidak tersedia</Text>
+              <Text style={styles.lpMissingTitle}>{simpleMode ? 'Siklus 10 Tahunan tidak tersedia' : '大運 Luck Pillars tidak tersedia'}</Text>
               <Text style={styles.lpMissingDesc}>
                 Jenis kelamin diperlukan untuk menghitung siklus 10 tahunan.
                 Reset profil dan isi ulang dengan data lengkap untuk mengaktifkan fitur ini.
@@ -1073,15 +1127,17 @@ export default function ProfileScreen() {
           {voidBranches.length > 0 && (
             <>
               <View style={styles.sectionLabelRow}>
-                <Text style={styles.sectionLabel}>空亡 VOID BRANCHES</Text>
+                <Text style={styles.sectionLabel}>{simpleMode ? 'CABANG KOSONG' : '空亡 VOID BRANCHES'}</Text>
                 {info('kong_wang')}
               </View>
               <View style={styles.voidCard}>
                 <View style={styles.voidBranchRow}>
                   {voidBranches.map(b => (
                     <View key={b} style={styles.voidBranchChip}>
-                      <Text style={styles.voidBranchChipText}>{b}</Text>
-                      <Text style={styles.voidBranchChipSub}>{BRANCH_ANIMAL[b] ?? ''}</Text>
+                      <Text style={styles.voidBranchChipText}>
+                        {simpleMode ? (BRANCH_ANIMAL[b] ?? b) : b}
+                      </Text>
+                      {!simpleMode && <Text style={styles.voidBranchChipSub}>{BRANCH_ANIMAL[b] ?? ''}</Text>}
                     </View>
                   ))}
                 </View>
@@ -1094,7 +1150,7 @@ export default function ProfileScreen() {
           {Object.keys(specialStars).length > 0 && (
             <>
               <View style={styles.sectionLabelRow}>
-                <Text style={styles.sectionLabel}>神煞 SPECIAL STARS</Text>
+                <Text style={styles.sectionLabel}>{simpleMode ? 'BINTANG SPESIAL' : '神煞 SPECIAL STARS'}</Text>
                 {info('special_stars')}
               </View>
               <View style={styles.starsCard}>
@@ -1106,13 +1162,19 @@ export default function ProfileScreen() {
                     <View key={key} style={[styles.starRow, val.in_chart && styles.starRowActive]}>
                       <View style={styles.starLeft}>
                         <Text style={[styles.starLabel, { color: val.in_chart ? meta.color : C.textFaint }]}>
-                          {meta.label}
+                          {simpleMode ? meta.label.replace(/^[一-鿿]+ /, '') : meta.label}
                         </Text>
-                        <Text style={styles.starBranches}>{branches.join(' · ')}</Text>
+                        <Text style={styles.starBranches}>
+                          {simpleMode
+                            ? branches.map((b: string) => BRANCH_ANIMAL[b] ?? b).join(' · ')
+                            : branches.join(' · ')}
+                        </Text>
                       </View>
                       <View style={styles.starRight}>
                         <Text style={[styles.starStatus, { color: val.in_chart ? meta.color : C.textFaint }]}>
-                          {val.in_chart ? '● 在命' : '○ 不在'}
+                          {val.in_chart
+                            ? (simpleMode ? '● Aktif' : '● 在命')
+                            : (simpleMode ? '○ Tidak Aktif' : '○ 不在')}
                         </Text>
                         <Text style={styles.starDesc} numberOfLines={2}>{meta.desc}</Text>
                       </View>
@@ -1120,7 +1182,7 @@ export default function ProfileScreen() {
                   );
                 })}
                 <TouchableOpacity onPress={() => setInfoTopic('special_stars')} style={styles.starsInfoBtn}>
-                  <Text style={styles.starsInfoBtnText}>ⓘ Tentang 神煞</Text>
+                  <Text style={styles.starsInfoBtnText}>{simpleMode ? 'ⓘ Tentang Bintang Spesial' : 'ⓘ Tentang 神煞'}</Text>
                 </TouchableOpacity>
               </View>
             </>
@@ -1160,29 +1222,66 @@ export default function ProfileScreen() {
             </View>
           )}
 
-          {!!narasi && !narasiLoading && (
-            <View
-              onLayout={(e) => { narasiBoxY.current = e.nativeEvent.layout.y; }}
-              style={[styles.narasiBox, isNarasiError(narasi) && styles.narasiBoxError]}
-            >
-              <View style={styles.narasiBoxHeader}>
-                <Text style={styles.narasiBoxLabel}>
-                  {NARASI_SECTIONS.find(s => s.key === activeSection)?.label}
+          {!!narasi && !narasiLoading && (() => {
+            const sections = parseStorySections(narasi);
+            if (sections.length > 0) {
+              return (
+                <View style={styles.storyContainer}>
+                  <FlatList
+                    ref={storyFlatRef}
+                    data={sections}
+                    keyExtractor={item => item.key}
+                    horizontal
+                    pagingEnabled
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.storyFlatList}
+                    onScroll={e => {
+                      const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
+                      setStoryCardIdx(idx);
+                    }}
+                    scrollEventThrottle={16}
+                    renderItem={({ item, index }) => (
+                      <View style={styles.storyCard}>
+                        <Text style={styles.storyCardNum}>{index + 1} / {sections.length}</Text>
+                        <Text style={styles.storyCardTitle}>{item.title}</Text>
+                        <Text style={styles.storyCardSubtitle}>{item.subtitle}</Text>
+                        <Text style={styles.storyCardText}>{item.content}</Text>
+                      </View>
+                    )}
+                  />
+                  <View style={styles.storyDots}>
+                    {sections.map((_, i) => (
+                      <View key={i} style={[styles.storyDot, i === storyCardIdx && styles.storyDotActive]} />
+                    ))}
+                  </View>
+                </View>
+              );
+            }
+            // Fallback: error or old format text block
+            return (
+              <View
+                onLayout={(e) => { narasiBoxY.current = e.nativeEvent.layout.y; }}
+                style={[styles.narasiBox, isNarasiError(narasi) && styles.narasiBoxError]}
+              >
+                <View style={styles.narasiBoxHeader}>
+                  <Text style={styles.narasiBoxLabel}>
+                    {NARASI_SECTIONS.find(s => s.key === activeSection)?.label}
+                  </Text>
+                  {isNarasiError(narasi) && (
+                    <TouchableOpacity
+                      style={styles.retryBtn}
+                      onPress={() => generateNarasi(activeSection, true)}
+                    >
+                      <Text style={styles.retryBtnText}>↻ Coba Lagi</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <Text style={[styles.narasiBoxText, isNarasiError(narasi) && styles.narasiErrorText]}>
+                  {narasi}
                 </Text>
-                {isNarasiError(narasi) && (
-                  <TouchableOpacity
-                    style={styles.retryBtn}
-                    onPress={() => generateNarasi(activeSection, true)}
-                  >
-                    <Text style={styles.retryBtnText}>↻ Coba Lagi</Text>
-                  </TouchableOpacity>
-                )}
               </View>
-              <Text style={[styles.narasiBoxText, isNarasiError(narasi) && styles.narasiErrorText]}>
-                {narasi}
-              </Text>
-            </View>
-          )}
+            );
+          })()}
 
           {/* Birth info */}
           <View style={styles.birthCard}>
@@ -1212,6 +1311,21 @@ export default function ProfileScreen() {
               </TouchableOpacity>
             )}
           </View>
+
+          {/* Mode Awam toggle */}
+          <TouchableOpacity
+            style={styles.simpleModeRow}
+            onPress={toggleSimpleMode}
+            activeOpacity={0.8}
+          >
+            <View>
+              <Text style={styles.notifLabel}>Mode Awam</Text>
+              <Text style={styles.notifSub}>{simpleMode ? 'Aktif — karakter Hanzi disembunyikan' : 'Nonaktif — tampil karakter Hanzi lengkap'}</Text>
+            </View>
+            <View style={[styles.notifPill, simpleMode && styles.notifPillOn]}>
+              <View style={[styles.notifThumb, simpleMode && styles.notifThumbOn]} />
+            </View>
+          </TouchableOpacity>
 
           {/* Notification toggle */}
           {Platform.OS === 'web' ? (
@@ -1727,4 +1841,40 @@ const styles = StyleSheet.create({
     borderRadius: 14, alignItems: 'center',
   },
   onboardStartText: { color: C.bg, fontWeight: '900', fontSize: 16 },
+
+  // Story swipe cards
+  storyContainer: { marginBottom: 20 },
+  storyFlatList:  { },
+  storyCard: {
+    width: SCREEN_W - 32,
+    backgroundColor: C.surface,
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: C.gold + '55',
+    borderLeftWidth: 3,
+    borderLeftColor: C.gold,
+    minHeight: 200,
+  },
+  storyCardNum:      { fontSize: 10, color: C.textFaint, fontWeight: '700', letterSpacing: 0.5, marginBottom: 6 },
+  storyCardTitle:    { fontSize: 16, fontWeight: '900', color: C.gold, marginBottom: 4 },
+  storyCardSubtitle: { fontSize: 11, color: C.textMuted, fontWeight: '600', letterSpacing: 0.3, marginBottom: 14 },
+  storyCardText:     { fontSize: 14, color: C.text, lineHeight: 23 },
+  storyDots: {
+    flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
+    gap: 6, paddingTop: 12,
+  },
+  storyDot:       { width: 6, height: 6, borderRadius: 3, backgroundColor: C.border },
+  storyDotActive: { width: 18, backgroundColor: C.gold },
+
+  // Simple mode pillar display
+  pillarStemSimple:   { fontSize: 11, fontWeight: '700', color: C.gold, textAlign: 'center', marginTop: 4, lineHeight: 16 },
+  pillarBranchSimple: { fontSize: 11, fontWeight: '700', color: C.text, textAlign: 'center', marginTop: 4, lineHeight: 16 },
+
+  // Mode Awam toggle
+  simpleModeRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: C.surface, borderRadius: 12, padding: 14,
+    borderWidth: 1, borderColor: C.border, marginBottom: 10,
+  },
 });

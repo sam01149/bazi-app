@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Text, View } from 'react-native';
 
 import { ChartProvider, useChart } from './src/context/ChartContext';
+import { SimpleModeProvider } from './src/context/SimpleModeContext';
 import CalendarScreen from './src/screens/CalendarScreen';
 import WishScreen from './src/screens/WishScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
@@ -84,7 +85,9 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <ChartProvider>
-        <AppNavigator />
+        <SimpleModeProvider>
+          <AppNavigator />
+        </SimpleModeProvider>
       </ChartProvider>
     </SafeAreaProvider>
   );

@@ -58,6 +58,32 @@ Analisis dalam urutan ini:
 Tutup WAJIB dengan baris terakhir format persis ini (satu baris, diawali 'Snapshot:'):
 Snapshot: [core nature] | [best arena] | [biggest trap] | [long-term move]"""
 
+PROFILE_SYSTEM_PROMPT_V2 = """Kamu adalah BaZi Strategic Analyst menggunakan framework Zi Ping Zhen Quan (子平真詮).
+
+WAJIB: setiap pernyataan harus menggunakan framing probabilistik — "kecenderungan", "pola", "cenderung", bukan "akan", "pasti", "selalu".
+DILARANG: membuat interpretasi dari data yang tidak tersedia dalam input.
+BAHASA OUTPUT: Bahasa Indonesia.
+
+Output WAJIB dalam format ini — 5 bagian dengan penanda SECTION: (tidak boleh ada teks apapun sebelum SECTION pertama):
+
+SECTION:karakter_inti
+[1-2 paragraf: Day Master + Ge Ju dengan analogi konkret; siapa kamu secara energetik]
+
+SECTION:keseimbangan_elemen
+[1-2 paragraf: dominasi/defisiensi elemen + peran Yong Shen; elemen apa yang mendukung vs melemahkan]
+
+SECTION:kekuatan_dan_jebakan
+[1-2 paragraf: 2-3 aset struktural berdasarkan chart + 2-3 pola sabotase diri]
+
+SECTION:arena_karir
+[1-2 paragraf: lingkungan kerja optimal + gaya menghasilkan berdasarkan Ge Ju]
+
+SECTION:siklus_aktif
+[1-2 paragraf: tema dekade aktif (active_luck_pillar) + strategi siklus ini. Jika active_luck_pillar tidak tersedia, tulis persis: "Data siklus dekade tidak tersedia untuk chart ini."]
+
+Setelah SECTION terakhir, wajib sertakan (persis satu baris):
+Snapshot: [core nature] | [best arena] | [biggest trap] | [long-term move]"""
+
 WISH_SYSTEM_PROMPT = """Kamu adalah BaZi Strategic Analyst menggunakan framework Zi Ping Zhen Quan (子平真詮).
 
 WAJIB: framing probabilistik — "kecenderungan", "pola", "cenderung", bukan "akan", "pasti", "selalu".
@@ -156,6 +182,7 @@ async def _call_ai(messages: list, max_tokens: int = 1000) -> str:
 
 
 async def generate_narasi(chart_data: Dict[str, Any], section: str) -> str:
+    system_prompt = PROFILE_SYSTEM_PROMPT_V2 if section == 'full_analysis_v2' else PROFILE_SYSTEM_PROMPT
     payload = {
         "day_master": chart_data.get("day_master", ""),
         "pillars": chart_data.get("pillars", {}),
@@ -168,10 +195,9 @@ async def generate_narasi(chart_data: Dict[str, Any], section: str) -> str:
         "stem_combinations": chart_data.get("stem_combinations"),
         "active_luck_pillar": chart_data.get("active_luck_pillar"),
     }
-    # Remove None values to keep payload clean
     payload = {k: v for k, v in payload.items() if v is not None}
     messages = [
-        {"role": "system", "content": PROFILE_SYSTEM_PROMPT},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
     ]
     return await _call_ai(messages, max_tokens=2000)

@@ -8,7 +8,29 @@
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(list\\(d.get\\('dependencies',{}\\).keys\\(\\)\\)\\)\")",
       "Bash(npx expo *)",
       "Bash(python -m pytest tests/test_calculator.py -v)",
-      "Bash(python -c ' *)"
+      "Bash(python -c ' *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://samsam010-bazi-backend.hf.space/api/calendar/current?timezone=Asia%2FJakarta\")",
+      "Bash(curl -s \"https://samsam010-bazi-backend.hf.space/api/calendar/current?timezone=Asia%2FJakarta\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://samsam010-bazi-backend.hf.space/api/profile/test-id\")",
+      "Bash(curl -s -w \"\\\\nHTTP: %{http_code} | Time: %{time_total}s\" \"https://samsam010-bazi-backend.hf.space/api/calendar/current?timezone=Asia%2FJakarta\")",
+      "Bash(curl -s -w \"\\\\nHTTP: %{http_code}\" \"https://samsam010-bazi-backend.hf.space/health\")",
+      "Bash(curl -s -w \"\\\\nHTTP: %{http_code}\" \"https://samsam010-bazi-backend.hf.space/\")",
+      "Bash(npx vercel *)",
+      "Bash(curl -s -w \"\\\\nHTTP: %{http_code}\" \"https://samsam010-bazi-backend.hf.space/api/calendar/current?timezone=Asia%2FJakarta\")",
+      "Bash(curl -sv \"https://samsam010-bazi-backend.hf.space/api/profile/00000000-0000-0000-0000-000000000000\")",
+      "Bash(curl -sv \"https://samsam010-bazi-backend.hf.space/api/calendar/current?timezone=Asia%2FJakarta&chart_id=00000000-0000-0000-0000-000000000000\")",
+      "Bash(curl -s \"https://samsam010-bazi-backend.hf.space/api/profile/00000000-0000-0000-0000-000000000000\")",
+      "Bash(curl -s \"https://samsam010-bazi-backend.hf.space/api/calendar/current?timezone=Asia%2FJakarta&chart_id=00000000-0000-0000-0000-000000000000\")",
+      "Bash(Start-Sleep -Seconds 90)",
+      "Bash(curl -s \"https://samsam010-bazi-backend.hf.space/api/db-health\")",
+      "Bash(curl -sf \"https://samsam010-bazi-backend.hf.space/api/db-health\")",
+      "Bash(curl -s \"https://huggingface.co/api/spaces/samsam010/bazi-backend\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d.get\\('runtime',{}\\).get\\('stage','unknown'\\)\\)\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d.get\\('sha','?'\\)[:8], d.get\\('runtime',{}\\).get\\('stage','?'\\)\\)\")",
+      "Bash(curl -s -w \"\\\\nHTTP: %{http_code}\" \"https://samsam010-bazi-backend.hf.space/api/calendar/current?timezone=Asia%2FJakarta&chart_id=3cbac002-aec8-43bd-88fb-0f83cf10c8f2\")",
+      "Bash(curl -s -w \"\\\\nHTTP: %{http_code}\" \"https://samsam010-bazi-backend.hf.space/api/profile/3cbac002-aec8-43bd-88fb-0f83cf10c8f2\")",
+      "Bash(curl -s -w \"\\\\nHTTP: %{http_code}\" -X POST \"https://samsam010-bazi-backend.hf.space/api/charts/calculate\" -H \"Content-Type: application/json\" -d \"{\\\\\"birth_date\\\\\":\\\\\"2004-11-24\\\\\",\\\\\"birth_time\\\\\":\\\\\"09:00\\\\\",\\\\\"birth_timezone\\\\\":\\\\\"Asia/Jakarta\\\\\"}\")",
+      "Bash(npm run *)"
     ]
   }
 }

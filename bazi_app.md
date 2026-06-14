@@ -54,7 +54,8 @@ Self app/
     └── src/
         ├── config.ts               — API_URL (baca EXPO_PUBLIC_API_URL)
         ├── context/
-        │   └── ChartContext.tsx    — shared chartId + timezone via AsyncStorage
+        │   ├── ChartContext.tsx    — shared chartId + timezone via AsyncStorage
+        │   └── SimpleModeContext.tsx — Mode Awam toggle persisted via AsyncStorage
         └── screens/
             ├── ProfileScreen.tsx   — onboarding + chart view + narasi sections
             ├── WishScreen.tsx      — tulis keinginan + analisis BaZi via AI
@@ -198,7 +199,7 @@ git push hf master:main
 
 ---
 
-## Status Saat Ini (2026-06-06 — update 9)
+## Status Saat Ini (2026-06-14 — update 10)
 
 ### Sudah Selesai ✅
 - Kalkulasi semua pilar (Year, Month, Day, Hour)
@@ -295,6 +296,17 @@ git push hf master:main
   - Fix: `InfoModal.tsx` — `StyleSheet.absoluteFillObject` → `StyleSheet.absoluteFill` (TypeScript error)
   - Feat: **P4-B Notifikasi Harian** — toggle di ProfileScreen; `expo-notifications`; izin permission + jadwal notifikasi lokal harian pukul 08.00; Android notification channel; toggle persisten via `@bazi_notifications_enabled`; web: info message; `app.json` diperbarui dengan plugin `expo-notifications`
   - Feat: **P4-D Alembic Migrations** — `alembic/` directory + `alembic.ini`; `env.py` async (SQLAlchemy async engine, asyncpg, `asyncio.run`); `versions/0001_baseline.py` — semua tabel dengan `CREATE TABLE IF NOT EXISTS` (idempotent di prod); Dockerfile diperbarui: `alembic upgrade head && uvicorn`; `main.py` lifespan disederhanakan — hanya `create_all()` untuk SQLite dev, PostgreSQL prod pakai alembic; `alembic` ditambahkan ke `requirements.txt`
+
+- **Update 10 (2026-06-14) — UX Gemini Recommendations:**
+  - Fix: **Calendar narasi re-generation bug** — `/api/calendar/narasi` kini di-cache di DB (`CachedNarasi` table) dengan section key `cal_{date_str}`; tidak lagi re-generate setiap kali app dibuka
+  - Feat: **Tab names baru** — Kalender→"Hari Ini", Keinginan→"Tujuan", Profil→"Peta Hidup" (internal route name tetap sama)
+  - Feat: **Warna terracotta** — `C.terra = '#C0614D'` di theme; clash/penalty/challenging interactions kini pakai terracotta warm, bukan merah keras
+  - Feat: **Antidote box prominent** — padding 13px, full border, teks 13px (naik dari sebelumnya)
+  - Feat: **Day Master glow** — `backgroundColor: stemCol + '12'` (7% hex alpha) di hero card Day Master
+  - Feat: **Greeting Dashboard** — card selamat pagi/siang/sore/malam + nickname profil + siklus dekade aktif (Luck Pillar aktif: stem berwarna + branch + usia mulai) di CalendarScreen, sebelum section tahun
+  - Feat: **Story/Swipe Cards** — narasi AI profil kini format 5 kartu horizontal swipeable (dot indicator); `PROFILE_SYSTEM_PROMPT_V2` output `SECTION:key` format; diparse dengan `parseStorySections()`; key cache `full_analysis_v2`; fallback ke text box jika format lama/error
+  - Feat: **Mode Awam toggle** — toggle di ProfileScreen; `SimpleModeContext` (React Context + AsyncStorage key `@bazi_simple_mode`); menyembunyikan karakter Hanzi dan mengganti dengan bahasa Indonesia: Day Master char→elemen, Ge Ju→"Pola Dominan", 用神→"Elemen Andalan", section headers→Bahasa Indonesia, pilar stem/branch→elemen/hewan, hidden gods→~ten_god, LP cards→elemen/hewan, void branches→nama hewan, special stars→nama Latin, status→Aktif/Tidak Aktif
+  - New file: `bazi-app/src/context/SimpleModeContext.tsx`
 
 ### Belum Ada / Known Issues ⚠️
 - **Tidak ada multi-user server-side** — profil hanya di AsyncStorage lokal, tidak ada login/akun

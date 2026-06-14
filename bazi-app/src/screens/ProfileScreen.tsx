@@ -412,7 +412,7 @@ export default function ProfileScreen() {
         await setChart(res.data.id, tz);
         setChartData(res.data);
         setCachedSections({});
-        setTimeout(() => generateNarasi('full_analysis'), 500);
+        setTimeout(() => generateNarasi('full_analysis_v2'), 500);
       } catch {
         Alert.alert('Gagal', 'Tidak dapat membuat chart. Periksa koneksi internet dan coba lagi.');
       } finally {
@@ -1265,9 +1265,11 @@ export default function ProfileScreen() {
                     horizontal
                     pagingEnabled
                     showsHorizontalScrollIndicator={false}
+                    nestedScrollEnabled
                     style={styles.storyFlatList}
-                    onScroll={e => {
-                      const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
+                    onMomentumScrollEnd={e => {
+                      const cardW = SCREEN_W - 32;
+                      const idx = Math.round(e.nativeEvent.contentOffset.x / cardW);
                       setStoryCardIdx(idx);
                     }}
                     scrollEventThrottle={16}

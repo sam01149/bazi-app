@@ -4,6 +4,11 @@
 
 Aplikasi mobile interpreter BaZi (四柱/八字) untuk pengguna non-praktisi. User input tanggal/waktu/timezone lahir, app menghitung chart BaZi dan menghasilkan narasi Bahasa Indonesia menggunakan framework Zi Ping Zhen Quan (子平真詮).
 
+**Dokumen terkait:**
+- [BAZI_APP_TECHNICAL_BRIEF.md](BAZI_APP_TECHNICAL_BRIEF.md) — spesifikasi teknis lengkap
+- [bazi_prompt.md](bazi_prompt.md) — prompt AI yang dipakai runtime aplikasi
+- [gemini_advisor_prompt.md](gemini_advisor_prompt.md) — template system prompt untuk advisor eksternal (Gemini dkk.) saat diskusi arsitektur/produk di luar Claude Code
+
 ---
 
 ## Stack

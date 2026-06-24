@@ -86,6 +86,72 @@ const TERM_EXPLANATIONS: Record<TermKey, { title: string; subtitle: string; body
   },
 };
 
+// ── Context-aware Yong Shen / Ge Ju tooltips ──────────────────────────────────
+// Yong Shen is stored as a Ten God category (官殺/印綬/財星/比劫/食神), not a raw
+// element — these mirror the backend's PRODUCES/CONTROLS/get_element_relation
+// logic (calculator.py) just enough to reverse-resolve which concrete element
+// (Kayu/Api/Tanah/Logam/Air) a user's specific Yong Shen points to, so the
+// tooltip can tell them what to actually DO instead of just defining the term.
+const PRODUCES_ID: Record<string, string> = { Kayu: 'Api', Api: 'Tanah', Tanah: 'Logam', Logam: 'Air', Air: 'Kayu' };
+const CONTROLS_ID: Record<string, string> = { Kayu: 'Tanah', Tanah: 'Air', Air: 'Api', Api: 'Logam', Logam: 'Kayu' };
+const ELEMENTS_ID = ['Kayu', 'Api', 'Tanah', 'Logam', 'Air'];
+
+function getElementRelation(dmElement: string, other: string): string {
+  if (other === dmElement) return '比劫';
+  if (PRODUCES_ID[dmElement] === other) return '食神';
+  if (CONTROLS_ID[dmElement] === other) return '財星';
+  if (CONTROLS_ID[other] === dmElement) return '官殺';
+  if (PRODUCES_ID[other] === dmElement) return '印綬';
+  return 'Unknown';
+}
+
+function resolveYongShenElement(dmElement: string, yongShenCategory: string): string | null {
+  return ELEMENTS_ID.find(el => getElementRelation(dmElement, el) === yongShenCategory) ?? null;
+}
+
+const ELEMENT_PRACTICAL: Record<string, string> = {
+  Kayu:  'Secara praktis, elemen Kayu mendukung pertumbuhan, belajar hal baru, dan memulai proyek. Perbanyak aktivitas yang melibatkan pengembangan diri dan ekspansi — kursus, bacaan baru, atau merintis sesuatu yang baru.',
+  Api:   'Secara praktis, elemen Api mendukung visibilitas, ekspresi diri, dan koneksi sosial yang hangat. Perbanyak aktivitas yang menampilkan dirimu ke publik — presentasi, networking, kegiatan kreatif yang terlihat orang lain.',
+  Tanah: 'Secara praktis, elemen Tanah mendukung stabilitas, kepercayaan, dan struktur jangka panjang. Perbanyak aktivitas yang membangun fondasi — menabung, rutinitas konsisten, komitmen jangka panjang.',
+  Logam: 'Secara praktis, elemen Logam mendukung disiplin, ketegasan, dan pengambilan keputusan yang tajam. Perbanyak aktivitas yang melatih fokus dan batasan — perencanaan terstruktur, evaluasi diri yang jujur.',
+  Air:   'Secara praktis, elemen Air mendukung komunikasi, kebijaksanaan, dan fleksibilitas. Perbanyak belajar, mencari mentor, atau menunda keputusan impulsif untuk berpikir lebih dulu.',
+};
+
+const GE_JU_PRACTICAL: Record<string, string> = {
+  '建禄格': 'Secara praktis: kamu bergerak paling optimal lewat usaha mandiri dan kemandirian penuh — percaya pada kemampuan sendiri, hindari terlalu bergantung pada orang lain.',
+  '月刃格': 'Secara praktis: energi kompetitifmu tinggi dan efektif di lingkungan yang menantang — tapi waspadai impulsif dan konflik yang tidak perlu.',
+  '食神格': 'Secara praktis: kreativitas dan kenikmatan hidup adalah bahan bakarmu — salurkan lewat karya, hobi, atau membagikan keahlian ke orang lain.',
+  '傷官格': 'Secara praktis: kamu unggul mendobrak aturan lama dan berekspresi bebas — manfaatkan untuk inovasi, tapi jaga cara komunikasi agar tidak terlalu blak-blakan.',
+  '偏財格': 'Secara praktis: kamu jeli melihat peluang finansial yang bergerak cepat — manfaatkan untuk bisnis/investasi, tapi tetap kelola risikonya.',
+  '正財格': 'Secara praktis: kamu unggul membangun kekayaan lewat kerja konsisten dan terukur — fokus pada stabilitas finansial jangka panjang.',
+  '七殺格': 'Secara praktis: kamu paling efektif di bawah tekanan dan tantangan besar — cari lingkungan kompetitif, tapi sediakan ruang untuk pulih dari intensitas itu.',
+  '正官格': 'Secara praktis: kamu bergerak paling optimal lewat jalur formal, struktur, dan reputasi — cocok untuk karier dengan jenjang dan otoritas yang jelas.',
+  '偏印格': 'Secara praktis: kamu unggul berpikir independen dan di luar kebiasaan umum — manfaatkan untuk riset/strategi, tapi jangan terlalu menutup diri dari orang lain.',
+  '正印格': 'Secara praktis: kamu unggul lewat pembelajaran, bimbingan, dan dukungan mentor — investasikan waktu untuk terus belajar dan mencari arahan yang tepat.',
+};
+
+function getPersonalizedTermBody(key: TermKey | '', chartData: any): string {
+  if (key === '' || !TERM_EXPLANATIONS[key]) return '';
+  const base = TERM_EXPLANATIONS[key].body;
+
+  if (key === 'ge_ju') {
+    const extra = chartData?.ge_ju ? GE_JU_PRACTICAL[chartData.ge_ju] : null;
+    return extra ? `${base}\n\n${extra}` : base;
+  }
+
+  if (key === 'yong_shen') {
+    const dayStem = chartData?.pillars?.day?.stem ?? '';
+    const dmElement = (STEM_ELEMENT[dayStem] ?? '').split(' ')[0];
+    const element = dmElement && chartData?.yong_shen
+      ? resolveYongShenElement(dmElement, chartData.yong_shen)
+      : null;
+    const extra = element ? ELEMENT_PRACTICAL[element] : null;
+    return extra ? `${base}\n\n${extra}` : base;
+  }
+
+  return base;
+}
+
 const TIMEZONES = [
   { label: 'WIB',  sub: 'Jakarta · Sumatera',     value: 'Asia/Jakarta'    },
   { label: 'WITA', sub: 'Bali · Makassar',         value: 'Asia/Makassar'   },
@@ -1404,7 +1470,7 @@ export default function ProfileScreen() {
           visible
           title={TERM_EXPLANATIONS[infoTopic].title}
           subtitle={TERM_EXPLANATIONS[infoTopic].subtitle}
-          body={TERM_EXPLANATIONS[infoTopic].body}
+          body={getPersonalizedTermBody(infoTopic, chartData)}
           onClose={() => setInfoTopic('')}
         />
       )}

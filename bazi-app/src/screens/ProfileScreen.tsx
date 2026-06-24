@@ -36,7 +36,7 @@ const ONBOARDING_SLIDES = [
   },
 ];
 
-type TermKey = 'day_master' | 'empat_pilar' | 'ge_ju' | 'yong_shen' | 'stem_combo' | 'luck_pillars' | 'kong_wang' | 'special_stars' | 'life_stages';
+type TermKey = 'day_master' | 'empat_pilar' | 'ge_ju' | 'yong_shen' | 'stem_combo' | 'three_combo' | 'natal_interactions' | 'luck_pillars' | 'kong_wang' | 'special_stars' | 'life_stages';
 
 const TERM_EXPLANATIONS: Record<TermKey, { title: string; subtitle: string; body: string }> = {
   day_master: {
@@ -63,6 +63,16 @@ const TERM_EXPLANATIONS: Record<TermKey, { title: string; subtitle: string; body
     title: 'Stem Combinations (天干合)',
     subtitle: '5 pasangan kombinasi Heavenly Stem',
     body: 'Dalam BaZi, ada 5 pasangan Heavenly Stem yang ketika bertemu, "bergabung" dan menghasilkan elemen baru:\n\n甲+己 → Tanah  |  乙+庚 → Logam\n丙+辛 → Air    |  丁+壬 → Kayu\n戊+癸 → Api\n\nKombinasi ini bisa memperkuat atau mengubah dinamika chart — terutama jika melibatkan Day Master.',
+  },
+  three_combo: {
+    title: 'Three Combinations (三合局)',
+    subtitle: 'Bureau elemen dari 3 branch yang berkelompok',
+    body: 'Selain pasangan Stem yang bergabung, ada 4 kelompok 3 Earthly Branch yang ketika berkumpul membentuk "bureau" elemen yang kuat:\n\n申子辰 → Air  |  亥卯未 → Kayu\n寅午戌 → Api  |  巳酉丑 → Logam\n\n"Full" berarti ketiga branch-nya lengkap hadir di chart-mu — efeknya kuat, branch-branch itu praktis berubah jadi elemen barunya. "Partial" berarti hanya 2 dari 3 hadir — efeknya lebih ringan, biasanya baru terasa kuat kalau Pilar Bulan ikut terlibat.',
+  },
+  natal_interactions: {
+    title: 'Interaksi Internal Chart',
+    subtitle: 'Clash/Kombinasi/Hambatan di dalam chart-mu sendiri',
+    body: 'Selain interaksi dengan kalender hari ini, branch-branch di chart natal-mu sendiri juga bisa berinteraksi satu sama lain — misalnya Pilar Tahun berbenturan dengan Pilar Jam.\n\nIni bukan kejadian yang datang dan pergi seperti interaksi kalender — ini sifat BAWAAN yang selalu ada di chart-mu. Benturan internal sering dibaca sebagai ketegangan/dualitas yang melekat dalam karakter (misalnya antara dua fase hidup atau dua peran), sementara kombinasi internal menunjukkan keharmonisan bawaan antar area itu.',
   },
   luck_pillars: {
     title: 'Luck Pillars (大運)',
@@ -137,6 +147,11 @@ const GE_JU_PRACTICAL: Record<string, string> = {
   '正官格': 'Secara praktis: kamu bergerak paling optimal lewat jalur formal, struktur, dan reputasi — cocok untuk karier dengan jenjang dan otoritas yang jelas.',
   '偏印格': 'Secara praktis: kamu unggul berpikir independen dan di luar kebiasaan umum — manfaatkan untuk riset/strategi, tapi jangan terlalu menutup diri dari orang lain.',
   '正印格': 'Secara praktis: kamu unggul lewat pembelajaran, bimbingan, dan dukungan mentor — investasikan waktu untuk terus belajar dan mencari arahan yang tepat.',
+};
+
+const NATAL_INTERACTION_LABEL: Record<string, string> = {
+  clash: 'Benturan Internal', six_combination: 'Kombinasi Internal', harm: 'Hambatan Internal',
+  penalty: 'Hukuman Internal', self_penalty: 'Hukuman Diri Internal',
 };
 
 function getPersonalizedTermBody(key: TermKey | '', chartData: any): string {
@@ -845,6 +860,9 @@ export default function ProfileScreen() {
   const hourUnknown:      boolean              = chartData?.hour_unknown ?? false;
   const specialStars:     Record<string, any>  = chartData?.special_stars ?? {};
   const pillarLifeStages: Record<string, string> = chartData?.pillar_life_stages ?? {};
+  const threeCombos:      any[]                = chartData?.three_combinations ?? [];
+  const natalInteractions: any[]               = chartData?.natal_interactions ?? [];
+  const lpInteractions:   any[]                = chartData?.active_luck_pillar_interactions ?? [];
 
   const snapshotParts = (() => {
     const text = cachedSections['full_analysis_v2'] ?? cachedSections['full_analysis'] ?? narasi;
@@ -1188,6 +1206,34 @@ export default function ProfileScreen() {
             </>
           )}
 
+          {/* Three Combinations (三合局) */}
+          {threeCombos.length > 0 && (
+            <>
+              <View style={styles.sectionLabelRow}>
+                <Text style={styles.sectionLabel}>{simpleMode ? 'BUREAU ELEMEN' : '三合局 THREE COMBINATIONS'}</Text>
+                {info('three_combo')}
+              </View>
+              <View style={styles.comboCard}>
+                {threeCombos.map((c, idx) => (
+                  <View key={idx} style={styles.comboRow}>
+                    <Text style={styles.comboStems}>
+                      {c.branches.map((b: string) => (
+                        <Text key={b}>
+                          {simpleMode ? `${BRANCH_ANIMAL[b] ?? b} ` : `${b} `}
+                        </Text>
+                      ))}
+                      <Text style={{ color: C.textMuted }}>合 → </Text>
+                      <Text style={{ color: C.gold }}>{c.result_element}</Text>
+                    </Text>
+                    <Text style={styles.comboPositions}>
+                      {c.positions.join(' + ')} · {c.strength === 'full' ? 'Lengkap' : 'Sebagian'}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </>
+          )}
+
           {/* Luck Pillars */}
           {luckPillars.length > 0 ? (
             <>
@@ -1227,6 +1273,23 @@ export default function ProfileScreen() {
                   );
                 })}
               </ScrollView>
+              {lpInteractions.length > 0 && (
+                <View style={styles.comboCard}>
+                  <Text style={styles.voidNote}>
+                    {simpleMode ? 'Hubungan dekade aktif dengan chart natal-mu:' : 'Hubungan 大運 aktif dengan pilar natal:'}
+                  </Text>
+                  {lpInteractions.map((it: any, idx: number) => (
+                    <View key={idx} style={styles.comboRow}>
+                      <Text style={styles.comboStems}>
+                        {simpleMode
+                          ? `${BRANCH_ANIMAL[it.user_branch] ?? it.user_branch} ↔ ${BRANCH_ANIMAL[it.luck_branch] ?? it.luck_branch}`
+                          : `${it.user_branch} ↔ ${it.luck_branch}`}
+                      </Text>
+                      <Text style={styles.comboPositions}>{it.description}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
             </>
           ) : (
             <View style={styles.lpMissingCard}>
@@ -1299,6 +1362,32 @@ export default function ProfileScreen() {
                 <TouchableOpacity onPress={() => setInfoTopic('special_stars')} style={styles.starsInfoBtn}>
                   <Text style={styles.starsInfoBtnText}>{simpleMode ? 'ⓘ Tentang Bintang Spesial' : 'ⓘ Tentang 神煞'}</Text>
                 </TouchableOpacity>
+              </View>
+            </>
+          )}
+
+          {/* Natal Internal Interactions */}
+          {natalInteractions.length > 0 && (
+            <>
+              <View style={styles.sectionLabelRow}>
+                <Text style={styles.sectionLabel}>{simpleMode ? 'INTERAKSI BAWAAN' : 'INTERAKSI INTERNAL CHART'}</Text>
+                {info('natal_interactions')}
+              </View>
+              <View style={styles.comboCard}>
+                {natalInteractions.map((it: any, idx: number) => (
+                  <View key={idx} style={styles.comboRow}>
+                    <Text style={styles.comboStems}>
+                      {NATAL_INTERACTION_LABEL[it.type] ?? it.type}
+                      <Text style={{ color: C.textMuted }}>
+                        {'  '}
+                        {simpleMode
+                          ? `${BRANCH_ANIMAL[it.branch_a] ?? it.branch_a} ↔ ${BRANCH_ANIMAL[it.branch_b] ?? it.branch_b}`
+                          : `${it.branch_a} ↔ ${it.branch_b}`}
+                      </Text>
+                    </Text>
+                    <Text style={styles.comboPositions}>{it.position_a} + {it.position_b}</Text>
+                  </View>
+                ))}
               </View>
             </>
           )}

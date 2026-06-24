@@ -43,19 +43,24 @@ Input yang kamu terima:
 - void_branches: branch yang masuk 空亡 (kehilangan efektivitas)
 - hidden_ten_gods: ten god dari hidden stem setiap branch
 - stem_combinations: pasangan stem yang saling mengikat (天干合)
+- three_combinations: kelompok branch yang membentuk 三合局 (full = 3 branch lengkap, partial = 2 dari 3); mengubah elemen efektif branch yang terlibat
+- natal_interactions: clash/combination/harm/penalty ANTAR pilar natal sendiri (sifat bawaan, bukan kejadian waktu tertentu)
+- special_stars: 神煞 (Gui Ren, Tao Hua, Yi Ma, Wen Chang, Gu Chen/Gua Su) yang aktif di chart
+- pillar_life_stages: kualitas energi 十二运星 di tiap pilar relatif Day Master
 - active_luck_pillar: stem + branch + usia mulai dekade aktif (jika tersedia)
+- active_luck_pillar_interactions: clash/combination/harm/penalty antara dekade aktif dan pilar natal (jika tersedia)
 - hour_unknown: jika true, jam lahir tidak diketahui — Pilar Jam, day_master_strength, dan yong_shen dihitung dengan estimasi dasar saja
 
 ATURAN KHUSUS hour_unknown: jika hour_unknown bernilai true, sisipkan satu catatan singkat (tanpa jargon) bahwa analisis kekuatan elemen ini bersifat estimasi dasar karena jam lahir tidak spesifik. Jangan terdengar terlalu percaya diri pada bagian Element Balance / Useful God.
 
 Analisis dalam urutan ini:
 1. Core identity — Day Master + Ge Ju dengan analogi konkret; apa yang dikejar struktur ini
-2. Element balance — dominasi/defisiensi + dampak ke pola hidup nyata
+2. Element balance — dominasi/defisiensi + dampak ke pola hidup nyata; sebut three_combinations jika ada (bureau elemen kuat mengubah keseimbangan)
 3. Useful God (用神) — peran Yong Shen dalam chart; elemen apa yang mendukung vs melemahkan
-4. Kekuatan & blind spots — 3 aset struktural, 3 pola sabotase diri (gunakan hidden ten gods jika relevan)
+4. Kekuatan & blind spots — 3 aset struktural, 3 pola sabotase diri (gunakan hidden_ten_gods, special_stars, dan natal_interactions jika relevan — natal_interactions menunjukkan ketegangan/keharmonisan bawaan, bukan kejadian sesaat)
 5. Karir & kekayaan — lingkungan kerja optimal, gaya menghasilkan berdasarkan Ge Ju
 6. Relasi — pola emosional berdasarkan ten gods (HANYA dari data yang tersedia)
-7. Luck cycle — tema dekade aktif + strategi untuk Yong Shen (HANYA jika active_luck_pillar tersedia)
+7. Luck cycle — tema dekade aktif + strategi untuk Yong Shen (HANYA jika active_luck_pillar tersedia); sebut active_luck_pillar_interactions jika ada (dekade ini menekan/mendukung pilar natal mana)
    Jika ada void_branches: identifikasi ten god mana yang void dan dampaknya
 
 Tutup WAJIB dengan baris terakhir format persis ini (satu baris, diawali 'Snapshot:'):
@@ -67,6 +72,12 @@ WAJIB: setiap pernyataan harus menggunakan framing probabilistik — "kecenderun
 DILARANG: membuat interpretasi dari data yang tidak tersedia dalam input.
 BAHASA OUTPUT: Bahasa Indonesia.
 
+Input tambahan yang mungkin tersedia di luar field dasar (day_master/pillars/ten_gods/strength/ge_ju/yong_shen):
+- three_combinations: kelompok branch yang membentuk 三合局 (full/partial) — bureau elemen kuat yang mengubah keseimbangan elemen chart
+- natal_interactions: clash/combination/harm/penalty ANTAR pilar natal sendiri — sifat bawaan/struktural, bukan kejadian waktu tertentu
+- special_stars: 神煞 yang aktif di chart (Gui Ren, Tao Hua, Yi Ma, Wen Chang, Gu Chen/Gua Su)
+- active_luck_pillar_interactions: clash/combination/harm/penalty antara dekade aktif (Luck Pillar) dan pilar natal
+
 ATURAN KHUSUS hour_unknown: jika input menyertakan hour_unknown=true, jam lahir tidak diketahui — Pilar Jam, day_master_strength, dan yong_shen dihitung dengan estimasi dasar saja. Sisipkan satu catatan singkat di SECTION:keseimbangan_elemen bahwa estimasi ini bersifat dasar karena jam lahir tidak spesifik, dan jangan terdengar terlalu percaya diri di bagian itu.
 
 Output WAJIB dalam format ini — 5 bagian dengan penanda SECTION: (tidak boleh ada teks apapun sebelum SECTION pertama):
@@ -75,16 +86,16 @@ SECTION:karakter_inti
 [1-2 paragraf: Day Master + Ge Ju dengan analogi konkret; siapa kamu secara energetik]
 
 SECTION:keseimbangan_elemen
-[1-2 paragraf: dominasi/defisiensi elemen + peran Yong Shen; elemen apa yang mendukung vs melemahkan]
+[1-2 paragraf: dominasi/defisiensi elemen + peran Yong Shen; elemen apa yang mendukung vs melemahkan. Jika ada three_combinations, jelaskan bagaimana bureau elemen itu menggeser keseimbangan]
 
 SECTION:kekuatan_dan_jebakan
-[1-2 paragraf: 2-3 aset struktural berdasarkan chart + 2-3 pola sabotase diri]
+[1-2 paragraf: 2-3 aset struktural berdasarkan chart + 2-3 pola sabotase diri. Manfaatkan natal_interactions (ketegangan/keharmonisan bawaan) dan special_stars jika tersedia dan relevan]
 
 SECTION:arena_karir
 [1-2 paragraf: lingkungan kerja optimal + gaya menghasilkan berdasarkan Ge Ju]
 
 SECTION:siklus_aktif
-[1-2 paragraf: tema dekade aktif (active_luck_pillar) + strategi siklus ini. Jika active_luck_pillar tidak tersedia, tulis persis: "Data siklus dekade tidak tersedia untuk chart ini."]
+[1-2 paragraf: tema dekade aktif (active_luck_pillar) + strategi siklus ini. Jika active_luck_pillar_interactions tersedia, sebut apakah dekade ini menekan atau mendukung pilar natal mana. Jika active_luck_pillar tidak tersedia, tulis persis: "Data siklus dekade tidak tersedia untuk chart ini."]
 
 Setelah SECTION terakhir, wajib sertakan (persis satu baris):
 Snapshot: [core nature] | [best arena] | [biggest trap] | [long-term move]"""
@@ -198,7 +209,12 @@ async def generate_narasi(chart_data: Dict[str, Any], section: str) -> str:
         "void_branches": chart_data.get("void_branches"),
         "hidden_ten_gods": chart_data.get("hidden_ten_gods"),
         "stem_combinations": chart_data.get("stem_combinations"),
+        "three_combinations": chart_data.get("three_combinations") or None,
+        "natal_interactions": chart_data.get("natal_interactions") or None,
+        "special_stars": chart_data.get("special_stars") or None,
+        "pillar_life_stages": chart_data.get("pillar_life_stages") or None,
         "active_luck_pillar": chart_data.get("active_luck_pillar"),
+        "active_luck_pillar_interactions": chart_data.get("active_luck_pillar_interactions") or None,
         "hour_unknown": chart_data.get("hour_unknown") or None,
     }
     payload = {k: v for k, v in payload.items() if v is not None}

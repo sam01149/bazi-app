@@ -42,16 +42,16 @@ SECTION:karakter_inti
 [Day Master + Ge Ju dengan analogi konkret]
 
 SECTION:keseimbangan_elemen
-[dominasi/defisiensi elemen + peran Yong Shen]
+[dominasi/defisiensi elemen + peran Yong Shen; sebut three_combinations jika ada]
 
 SECTION:kekuatan_dan_jebakan
-[2-3 aset struktural + 2-3 pola sabotase diri]
+[2-3 aset struktural + 2-3 pola sabotase diri; manfaatkan hidden_ten_gods, special_stars, natal_interactions jika relevan]
 
 SECTION:arena_karir
 [lingkungan kerja optimal + gaya menghasilkan berdasarkan Ge Ju]
 
 SECTION:siklus_aktif
-[tema dekade aktif (active_luck_pillar) + strategi siklus ini, atau pesan fallback jika tidak tersedia]
+[tema dekade aktif (active_luck_pillar) + strategi siklus ini, termasuk active_luck_pillar_interactions jika ada; atau pesan fallback jika tidak tersedia]
 
 Setelah SECTION terakhir, wajib sertakan (persis satu baris):
 Snapshot: [core nature] | [best arena] | [biggest trap] | [long-term move]
@@ -70,10 +70,17 @@ User payload (`generate_narasi`'s internal `payload` dict, hanya key yang non-nu
   "void_branches": ["..."],
   "hidden_ten_gods": { "...": "..." },
   "stem_combinations": [{ "stems": ["...", "..."], "positions": ["...", "..."], "result_element": "..." }],
+  "three_combinations": [{ "branches": ["...", "..."], "positions": ["...", "..."], "result_element": "...", "strength": "full | partial" }],
+  "natal_interactions": [{ "type": "clash | six_combination | harm | penalty | self_penalty", "branch_a": "...", "branch_b": "...", "position_a": "...", "position_b": "...", "description": "..." }],
+  "special_stars": { "gui_ren": { "...": "..." }, "tao_hua": { "...": "..." } },
+  "pillar_life_stages": { "year": "...", "month": "...", "day": "...", "hour": "..." },
   "active_luck_pillar": { "...": "..." },
+  "active_luck_pillar_interactions": [{ "type": "...", "user_branch": "...", "luck_branch": "...", "favorability": "challenging | favorable | neutral | null", "description": "..." }],
   "hour_unknown": true
 }
 ```
+
+`three_combinations`, `natal_interactions`, `special_stars`, dan `pillar_life_stages` sebelumnya dihitung dan ditampilkan di UI tapi TIDAK pernah dikirim ke AI — narasi profil komprehensif kehilangan dimensi-dimensi ini sepenuhnya. `active_luck_pillar_interactions` juga baru: sebelumnya tidak ada perbandingan apa pun antara dekade aktif (Luck Pillar) dan pilar natal — interaksi hanya dicek terhadap kalender harian/tahunan.
 
 Parser di frontend: `parseStorySections()` di [bazi-app/src/screens/ProfileScreen.tsx](bazi-app/src/screens/ProfileScreen.tsx) — regex `/SECTION:(\w+)\n([\s\S]*?)(?=SECTION:|Snapshot:|$)/g`. **Risiko:** ini delimiter string custom, bukan JSON — rapuh terhadap deviasi format kecil dari model (spasi ekstra, urutan section tertukar). Belum direfactor ke JSON mode karena parser saat ini stabil di production; pertimbangkan refactor jika model di cascade berganti dan mulai sering gagal parse.
 

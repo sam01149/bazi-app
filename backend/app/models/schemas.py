@@ -57,6 +57,9 @@ class ChartResponse(BaseModel):
     hour_unknown: bool = False
     special_stars: Optional[Dict[str, Any]] = None
     pillar_life_stages: Optional[Dict[str, str]] = None
+    three_combinations: Optional[List[Dict[str, Any]]] = None
+    natal_interactions: Optional[List[Dict[str, Any]]] = None
+    active_luck_pillar_interactions: Optional[List[Dict[str, Any]]] = None
 
     class Config:
         from_attributes = True

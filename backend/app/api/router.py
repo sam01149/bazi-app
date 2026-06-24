@@ -22,7 +22,10 @@ from app.engine.calculator import (
     get_luck_pillars, get_active_luck_pillar,
     get_special_stars, get_life_stage,
 )
-from app.engine.interactions import detect_calendar_interactions, detect_stem_combinations, annotate_favorability
+from app.engine.interactions import (
+    detect_calendar_interactions, detect_stem_combinations, annotate_favorability,
+    detect_three_combinations, detect_natal_internal_interactions, detect_luck_pillar_interactions,
+)
 from app.engine.tables import HEAVENLY_STEMS_ELEMENT, HEAVENLY_STEMS_POLARITY
 from app.services.cerebras import (
     generate_narasi, generate_wish_analysis, generate_calendar_narasi,
@@ -60,6 +63,8 @@ def _build_chart_response(
     day_stem = db_chart.day_stem
     void_branches = get_kong_wang(day_stem, db_chart.day_branch)
     stem_combinations = detect_stem_combinations(pillars)
+    three_combinations = detect_three_combinations(pillars)
+    natal_interactions = detect_natal_internal_interactions(pillars)
     hidden_ten_gods = get_hidden_stem_ten_gods(pillars, day_stem)
 
     # Special stars
@@ -104,6 +109,11 @@ def _build_chart_response(
                 life_stage=get_life_stage(day_stem, active_dict["branch"]),
             )
 
+    active_lp_interactions = None
+    if active_lp:
+        active_lp_interactions = detect_luck_pillar_interactions(pillars, active_lp.branch)
+        active_lp_interactions = annotate_favorability(active_lp_interactions, day_stem, db_chart.yong_shen)
+
     return ChartResponse(
         id=db_chart.id,
         user_id=db_chart.user_id,
@@ -123,6 +133,9 @@ def _build_chart_response(
         hour_unknown=db_chart.hour_unknown or False,
         special_stars=special_stars or None,
         pillar_life_stages=pillar_life_stages or None,
+        three_combinations=three_combinations or None,
+        natal_interactions=natal_interactions or None,
+        active_luck_pillar_interactions=active_lp_interactions or None,
     )
 
 
@@ -130,6 +143,10 @@ def _build_chart_dict(db_chart: BaZiChart, ten_gods_map: dict = None, luck_pilla
     """Build chart dict for AI payload."""
     pillars = _pillars_dict(db_chart)
     day_stem = db_chart.day_stem
+    natal_branches = [
+        db_chart.year_branch, db_chart.month_branch,
+        db_chart.day_branch, db_chart.hour_branch or "",
+    ]
     d = {
         "day_master": f"{day_stem} {HEAVENLY_STEMS_ELEMENT.get(day_stem, '')} {HEAVENLY_STEMS_POLARITY.get(day_stem, '')}".strip(),
         "strength": db_chart.day_master_strength,
@@ -138,8 +155,16 @@ def _build_chart_dict(db_chart: BaZiChart, ten_gods_map: dict = None, luck_pilla
         "pillars": pillars,
         "void_branches": get_kong_wang(day_stem, db_chart.day_branch),
         "stem_combinations": detect_stem_combinations(pillars),
+        "three_combinations": detect_three_combinations(pillars),
+        "natal_interactions": detect_natal_internal_interactions(pillars),
         "hidden_ten_gods": get_hidden_stem_ten_gods(pillars, day_stem),
         "hour_unknown": bool(db_chart.hour_unknown),
+        "special_stars": get_special_stars(day_stem, db_chart.year_branch, natal_branches),
+        "pillar_life_stages": {
+            pos: get_life_stage(day_stem, pillars[pos]["branch"])
+            for pos in ("year", "month", "day", "hour")
+            if pillars[pos]["branch"]
+        },
     }
     if ten_gods_map:
         d["ten_gods"] = ten_gods_map
@@ -148,7 +173,12 @@ def _build_chart_dict(db_chart: BaZiChart, ten_gods_map: dict = None, luck_pilla
         birth_aware = tz.localize(db_chart.birth_datetime)
         lp_raw = [{"age_start": lp.age_start, "stem": lp.stem, "branch": lp.branch, "order_index": lp.order_index}
                   for lp in sorted(luck_pillars_list, key=lambda x: x.order_index)]
-        d["active_luck_pillar"] = get_active_luck_pillar(lp_raw, birth_aware)
+        active_lp = get_active_luck_pillar(lp_raw, birth_aware)
+        if active_lp:
+            active_lp = {**active_lp, "life_stage": get_life_stage(day_stem, active_lp["branch"])}
+            lp_interactions = detect_luck_pillar_interactions(pillars, active_lp["branch"])
+            d["active_luck_pillar_interactions"] = annotate_favorability(lp_interactions, day_stem, db_chart.yong_shen)
+        d["active_luck_pillar"] = active_lp
     return d
 
 

@@ -234,9 +234,17 @@ def calculate_day_master_strength(pillars: dict, day_master: str) -> str:
     the season must back the transformation). The Day stem is excluded from
     transformation — Day Master transformation (化氣格) needs criteria beyond
     this engine's scope.
+
+    Three Harmony Combinations (三合局) among the branches shift those
+    branches' contribution to the combination's result element: a 'full'
+    combination (all 3 branches present) always transforms — it's a strong
+    elemental bureau on its own; a 'partial' one (2 of 3 present) only
+    transforms when the Month branch participates (lending it seasonal
+    authority), mirroring the same season-must-back-it logic used for stems.
     """
     dm_element = HEAVENLY_STEMS_ELEMENT[day_master]
     month_branch_element = EARTHLY_BRANCHES_ELEMENT[pillars["month"]["branch"]]
+    month_branch = pillars["month"]["branch"]
 
     stem_overrides: dict[str, str] = {}
     stem_positions = [
@@ -262,6 +270,26 @@ def calculate_day_master_strength(pillars: dict, day_master: str) -> str:
     def _stem_element(pos: str) -> str:
         return stem_overrides.get(pos, HEAVENLY_STEMS_ELEMENT[pillars[pos]["stem"]])
 
+    branch_overrides: dict[str, str] = {}
+    branch_positions = [
+        (pos, pillars[pos]["branch"])
+        for pos in ("year", "month", "day", "hour")
+        if pillars.get(pos, {}).get("branch")
+    ]
+    for combo_set, result_element in THREE_COMBINATIONS:
+        present = [(pos, b) for pos, b in branch_positions if b in combo_set]
+        present_branches = {b for _, b in present}
+        if len(present_branches) < 2:
+            continue
+        is_full = present_branches == combo_set
+        month_participates = month_branch in present_branches
+        if is_full or month_participates:
+            for pos, _ in present:
+                branch_overrides[pos] = result_element
+
+    def _branch_element(pos: str) -> str:
+        return branch_overrides.get(pos, EARTHLY_BRANCHES_ELEMENT[pillars[pos]["branch"]])
+
     def _score(element: str) -> int:
         if element == dm_element:
             return 1   # 比劫 — same element, supports DM
@@ -278,11 +306,11 @@ def calculate_day_master_strength(pillars: dict, day_master: str) -> str:
     score = 0
 
     # Month branch: primary seasonal indicator (weight ×3)
-    score += _score(EARTHLY_BRANCHES_ELEMENT[pillars["month"]["branch"]]) * 3
+    score += _score(_branch_element("month")) * 3
 
     # Remaining branches (year, day, hour) — weight ×1 each
     for key in ("year", "day", "hour"):
-        score += _score(EARTHLY_BRANCHES_ELEMENT[pillars[key]["branch"]])
+        score += _score(_branch_element(key))
 
     # Other stems (year, month, hour) — exclude day stem (that IS the day master)
     for key in ("year", "month", "hour"):

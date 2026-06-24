@@ -82,10 +82,10 @@ def test_hour_pillar_midnight():
 
 
 def test_hour_pillar_noon():
-    """Hour 12 (Wu hour) with day stem 甲 → 丙午."""
+    """Hour 12 (Wu hour) with day stem 甲 → 庚午 (Five Rats Method: 甲日甲子时起, 午 is the 7th branch → 庚)."""
     stem, branch = get_hour_pillar("甲", 12)
     assert branch == "午", f"Got branch {branch}"
-    assert stem == "丙", f"Got stem {stem}, expected 丙"
+    assert stem == "庚", f"Got stem {stem}, expected 庚"
 
 
 # ── Ten Gods ──────────────────────────────────────────────────────────────────

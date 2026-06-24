@@ -71,6 +71,7 @@ class InteractionSchema(BaseModel):
     description: str
     element: Optional[str] = None
     favorability: Optional[str] = None  # 'challenging' | 'favorable' | 'neutral' | None (Yong Shen unresolved)
+    penalty_name: Optional[str] = None  # 'Ungrateful Penalty' | 'Bullying Penalty' | 'Uncivilized Penalty' — only set when type == 'penalty'
 
 class CalendarResponse(BaseModel):
     current_pillars: PillarsSchema

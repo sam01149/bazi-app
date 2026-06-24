@@ -36,26 +36,33 @@ _PENALTY_PAIRS = _derive_penalty_pairs()
 _SELF_PENALTY_BRANCHES = frozenset().union(*(g for g in THREE_PENALTIES if len(g) == 1))
 
 
-def _classify_branch_pair(b1: str, b2: str) -> dict | None:
-    """Classify the interaction (if any) between two DISTINCT branches — shared
-    by calendar, Luck Pillar, and natal-internal interaction detection so the
-    Clash/Combination/Harm/Penalty rules live in exactly one place."""
+def _classify_branch_pair(b1: str, b2: str) -> list[dict]:
+    """Classify ALL interactions between two DISTINCT branches — shared by
+    calendar, Luck Pillar, and natal-internal interaction detection so the
+    Clash/Combination/Harm/Penalty rules live in exactly one place.
+
+    Returns a LIST, not a single match: some classical branch pairs belong to
+    more than one category at once (e.g. 寅-巳 is both a Six Harm AND part of
+    the Ungrateful Penalty group) — both must be reported, not just whichever
+    rule happened to be checked first.
+    """
     if b1 == b2:
-        return None
+        return []
     pair = frozenset({b1, b2})
+    found = []
     for clash_pair in SIX_CLASHES:
         if pair == clash_pair:
-            return {"type": "clash", "description": f"{b1}-{b2} Clash"}
+            found.append({"type": "clash", "description": f"{b1}-{b2} Clash"})
     for combo_pair, element in SIX_COMBINATIONS:
         if pair == combo_pair:
-            return {"type": "six_combination", "element": element, "description": f"{b1}-{b2} Six Combination ({element})"}
+            found.append({"type": "six_combination", "element": element, "description": f"{b1}-{b2} Six Combination ({element})"})
     for harm_pair in SIX_HARMS:
         if pair == harm_pair:
-            return {"type": "harm", "description": f"{b1}-{b2} Harm"}
+            found.append({"type": "harm", "description": f"{b1}-{b2} Harm"})
     for penalty_pair, penalty_name in _PENALTY_PAIRS:
         if pair == penalty_pair:
-            return {"type": "penalty", "description": f"{b1}-{b2} {penalty_name}"}
-    return None
+            found.append({"type": "penalty", "penalty_name": penalty_name, "description": f"{b1}-{b2} {penalty_name}"})
+    return found
 
 
 def detect_stem_combinations(pillars: dict) -> list:
@@ -127,7 +134,8 @@ def detect_natal_internal_interactions(pillars: dict) -> list:
             pos2, b2 = positions[j]
             classified = _classify_branch_pair(b1, b2)
             if classified:
-                interactions.append({**classified, "position_a": pos1, "branch_a": b1, "position_b": pos2, "branch_b": b2})
+                for c in classified:
+                    interactions.append({**c, "position_a": pos1, "branch_a": b1, "position_b": pos2, "branch_b": b2})
             elif b1 == b2 and b1 in _SELF_PENALTY_BRANCHES:
                 interactions.append({
                     "type": "self_penalty",
@@ -156,7 +164,8 @@ def detect_luck_pillar_interactions(natal_pillars: dict, luck_branch: str) -> li
     for pos, nb in natal_branches:
         classified = _classify_branch_pair(nb, luck_branch)
         if classified:
-            interactions.append({**classified, "user_branch": nb, "luck_branch": luck_branch, "natal_position": pos})
+            for c in classified:
+                interactions.append({**c, "user_branch": nb, "luck_branch": luck_branch, "natal_position": pos})
         elif nb == luck_branch and nb in _SELF_PENALTY_BRANCHES:
             interactions.append({
                 "type": "self_penalty", "user_branch": nb, "luck_branch": luck_branch, "natal_position": pos,
@@ -188,7 +197,8 @@ def detect_calendar_interactions(user_chart: dict, calendar_pillars: dict) -> li
         for u_b in user_branches:
             classified = _classify_branch_pair(u_b, cal_b)
             if classified:
-                interactions.append({**classified, "user_branch": u_b, "calendar_branch": cal_b})
+                for c in classified:
+                    interactions.append({**c, "user_branch": u_b, "calendar_branch": cal_b})
             elif u_b == cal_b and u_b in _SELF_PENALTY_BRANCHES:
                 interactions.append({
                     "type": "self_penalty",

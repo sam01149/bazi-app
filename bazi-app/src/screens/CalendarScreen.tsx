@@ -9,6 +9,7 @@ import { useChart } from '../context/ChartContext';
 import { C, STEM_COLOR, STEM_ELEMENT, BRANCH_ANIMAL, BRANCH_ELEMENT } from '../theme';
 import InfoModal from '../components/InfoModal';
 import { useSimpleMode } from '../context/SimpleModeContext';
+import { getInteractionDetail } from '../baziTerms';
 
 function utcToLocalDateStr(utcStr: string, tz: string): string {
   try {
@@ -41,26 +42,54 @@ const DISRUPTIVE_CHALLENGING_COLOR: Record<string, string> = {
 };
 
 // Per-type 'favorable' copy — mirrors the nuance each type already has in the
-// 'challenging' path (clash=konfrontasi, harm=dinamika tersembunyi, penalty=
-// tekanan eksternal, self_penalty=ketidakstabilan internal) instead of one
-// generic sentence for all 4, so Clash and Harm don't read identically.
+// 'challenging' path (clash=perpisahan/perubahan mendadak, harm=kerugian
+// tersembunyi dari orang dekat, self_penalty=kontradiksi internal) instead of
+// one generic sentence for all, so Clash and Harm don't read identically.
+// Penalty (刑) is handled separately below — it has 3 classically distinct
+// subtypes (Ungrateful/Bullying/Uncivilized), not one generic meaning.
 const DISRUPTIVE_FAVORABLE: Record<string, { plain: string; antidote: string }> = {
   clash: {
     plain: 'Benturan ini menyentuh bagian chart yang bukan elemen andalanmu — bisa dipakai untuk benar-benar memutus sesuatu yang usang tanpa mengganggu fondasi pentingmu.',
     antidote: 'Gunakan momentum ini untuk: Mengakhiri kebiasaan/komitmen yang sudah tidak relevan, membuat keputusan tegas yang selama ini ditunda. Energi benturan ini bekerja untukmu, bukan melawanmu.',
   },
   harm: {
-    plain: 'Ada dinamika tersembunyi hari ini, tapi menyasar bagian yang bukan elemen andalanmu — miskomunikasi kecil di area ini kemungkinan tidak berdampak besar.',
-    antidote: 'Gunakan momentum ini untuk: Membersihkan gosip/asumsi lama, klarifikasi hal yang selama ini mengganjal. Risikonya rendah karena tidak menyentuh area vital chart-mu.',
-  },
-  penalty: {
-    plain: 'Ada tekanan situasional hari ini, tapi tidak menyasar elemen andalanmu — tekanan ini kemungkinan tidak benar-benar mengganggu fungsi utamamu.',
-    antidote: 'Gunakan momentum ini untuk: Menyelesaikan tugas administratif yang menumpuk, beres-beres hal teknis. Tekanan dari luar ini bisa jadi dorongan, bukan ancaman.',
+    plain: 'Potensi dirugikan diam-diam hari ini menyasar bagian yang bukan elemen andalanmu — risiko dikecewakan orang dekat tetap ada, tapi dampaknya ke fondasi utamamu kemungkinan minim.',
+    antidote: 'Gunakan momentum ini untuk: Mengevaluasi hubungan yang selama ini terasa tidak tulus, tanpa perlu takut kehilangan banyak. Energi ini membantumu melihat siapa yang benar-benar bisa dipercaya.',
   },
   self_penalty: {
-    plain: 'Ada gejolak energi internal hari ini, tapi di bagian yang bukan elemen andalanmu — dampaknya ke performa utamamu kemungkinan minim.',
-    antidote: 'Gunakan momentum ini untuk: Refleksi ringan atau coba hal baru tanpa tekanan — gejolak ini tidak menyasar fondasi utamamu.',
+    plain: 'Ada gejolak kontradiksi internal hari ini, tapi di bagian yang bukan elemen andalanmu — dampaknya ke performa utamamu kemungkinan minim.',
+    antidote: 'Gunakan momentum ini untuk: Bereksperimen atau ambil risiko kecil — potensi sabotase diri hari ini tidak menyasar fondasi utamamu.',
   },
+};
+
+// 三刑 Penalty has 3 classically distinct subtypes — each means something
+// different, so they can't share one generic "tekanan eksternal" text. Keyed
+// by the backend's penalty_name field.
+const PENALTY_SUBTYPE: Record<string, { plain: string; antidote: string; favorablePlain: string; favorableAntidote: string }> = {
+  'Ungrateful Penalty': {
+    plain: 'Ada risiko dikhianati atau tidak dihargai setelah membantu orang lain — bantuan yang kamu berikan mungkin tidak dibalas setara.',
+    antidote: 'Gunakan hari ini untuk: Membantu dengan batasan jelas, jangan all-in tanpa ekspektasi balik. Hindari: Meminjamkan uang/jasa besar tanpa perjanjian jelas.',
+    favorablePlain: 'Potensi dikhianati hari ini menyasar bagian yang bukan elemen andalanmu — kalaupun ada yang tidak menghargai bantuanmu, dampaknya ke fondasi utamamu kemungkinan kecil.',
+    favorableAntidote: 'Gunakan momentum ini untuk: Berani membantu tanpa terlalu khawatir dikecewakan — risikonya rendah karena tidak menyentuh area vital chart-mu.',
+  },
+  'Bullying Penalty': {
+    plain: 'Ada potensi konflik karena penyalahgunaan posisi/kekuasaan — entah kamu yang merasa ditekan otoritas, atau kamu sendiri yang bersikap terlalu otoriter ke orang lain.',
+    antidote: 'Gunakan hari ini untuk: Mengecek ulang apakah kamu (atau pihak lain) terlalu memaksakan kehendak. Hindari: Konfrontasi dengan atasan/figur otoritas, dan jangan menekan orang yang posisinya lebih lemah.',
+    favorablePlain: 'Potensi gesekan kekuasaan hari ini tidak menyasar elemen andalanmu — situasi yang terasa menekan kemungkinan tidak benar-benar mengganggu fondasi utamamu.',
+    favorableAntidote: 'Gunakan momentum ini untuk: Bersikap lebih tegas/percaya diri tanpa takut konsekuensi besar — ruang amannya lebih lebar dari biasanya.',
+  },
+  'Uncivilized Penalty': {
+    plain: 'Ada potensi gesekan karena batasan/etika yang dilanggar — bisa berupa konflik keluarga atau situasi yang terasa tidak menghormati posisimu.',
+    antidote: 'Gunakan hari ini untuk: Menegaskan batasan dengan sopan, bukan diam saja. Hindari: Situasi yang menuntutmu mengabaikan prinsip demi menjaga keharmonisan semu.',
+    favorablePlain: 'Potensi gesekan soal batasan hari ini menyasar bagian yang bukan elemen andalanmu — konflik kecil soal etika kemungkinan tidak berdampak besar ke fondasi utamamu.',
+    favorableAntidote: 'Gunakan momentum ini untuk: Menetapkan batasan baru tanpa terlalu khawatir akan reaksi besar dari orang lain.',
+  },
+};
+const PENALTY_FALLBACK = {
+  plain: 'Ada tekanan dari konflik struktural hari ini.',
+  antidote: 'Gunakan hari ini untuk: Bersikap hati-hati dalam komunikasi dan keputusan penting.',
+  favorablePlain: 'Ada tekanan dari konflik struktural hari ini, tapi tidak menyasar elemen andalanmu — dampaknya kemungkinan minim.',
+  favorableAntidote: 'Gunakan momentum ini untuk: Melangkah dengan lebih percaya diri — ruang amannya lebih lebar dari biasanya.',
 };
 
 // Favorability ('challenging' | 'favorable' | 'neutral' | undefined) compares the
@@ -71,6 +100,13 @@ function getInteractionDisplay(item: any): { label: string; icon: string; color:
   const fav: string | undefined = item.favorability ?? undefined;
   const disruptive = DISRUPTIVE_TYPES.has(item.type);
 
+  if (item.type === 'penalty') {
+    const subtype = PENALTY_SUBTYPE[item.penalty_name] ?? PENALTY_FALLBACK;
+    if (fav === 'favorable') {
+      return { ...base, color: C.teal, plain: subtype.favorablePlain, antidote: subtype.favorableAntidote };
+    }
+    return { ...base, color: C.terra, plain: subtype.plain, antidote: subtype.antidote };
+  }
   if (fav === 'favorable' && disruptive) {
     const variant = DISRUPTIVE_FAVORABLE[item.type];
     return { ...base, color: C.teal, plain: variant?.plain, antidote: variant?.antidote };
@@ -103,16 +139,16 @@ function getInteractionDisplay(item: any): { label: string; icon: string; color:
 const INTERACTION_PLAIN: Record<string, string> = {
   clash:           'Hindari konfrontasi langsung dan keputusan impulsif hari ini.',
   six_combination: 'Energi mendukung kerjasama — bagus untuk kolaborasi dan memulai hal baru.',
-  harm:            'Waspadai dinamika tersembunyi di sekitarmu — jaga komunikasi tetap jelas.',
-  penalty:         'Ada tekanan dari situasi di luar kendali — bersabar dan tidak terburu-buru.',
-  self_penalty:    'Energi internalmu sedang tidak stabil — jaga keseimbangan dan istirahat cukup.',
+  harm:            'Ada potensi dirugikan diam-diam oleh orang yang seharusnya dekat atau membantumu — bukan konfrontasi terbuka, tapi gangguan tersembunyi.',
+  penalty:         'Ada tekanan dari konflik struktural hari ini — bersabar dan tidak terburu-buru.',
+  self_penalty:    'Energi internalmu cenderung kontradiktif hari ini — risiko sabotase diri lewat keraguan atau keputusan yang saling bertentangan.',
 };
 
 const INTERACTION_ANTIDOTE: Record<string, string> = {
   clash:       'Gunakan hari ini untuk: Mengakhiri kebiasaan buruk, membersihkan hal yang sudah usang, atau membuat perubahan yang sudah lama ditunda. Hindari: Menikah, tanda tangan kontrak, atau memulai usaha baru.',
-  harm:        'Gunakan hari ini untuk: Komunikasi satu-satu yang tenang dan langsung. Hindari: Bergosip, mengambil keputusan berdasarkan informasi pihak ketiga.',
-  penalty:     'Gunakan hari ini untuk: Menyelesaikan tugas internal dan administratif. Hindari: Konfrontasi publik dan presentasi penting.',
-  self_penalty:'Gunakan hari ini untuk: Istirahat, refleksi, meditasi, atau kegiatan kreatif solo. Hindari: Overpromise dan multitasking berat.',
+  harm:        'Gunakan hari ini untuk: Memverifikasi niat orang yang menawarkan bantuan, jangan terlalu cepat percaya ke pihak ketiga. Hindari: Membagikan rencana penting ke orang yang belum benar-benar terbukti niatnya.',
+  penalty:     'Gunakan hari ini untuk: Bersikap hati-hati dalam komunikasi dan keputusan penting.',
+  self_penalty:'Gunakan hari ini untuk: Istirahat, refleksi, atau kegiatan kreatif solo. Hindari: Overpromise dan multitasking berat — risiko terbesar datang dari dirimu sendiri, bukan dari luar.',
 };
 
 type SolarTermInfo = { pinyin: string; season: string; desc: string };
@@ -254,6 +290,7 @@ export default function CalendarScreen() {
   const fetchedYearsRef = useRef<Set<number>>(new Set());
 
   const [solarTermModal, setSolarTermModal] = useState<(SolarTermInfo & { name: string }) | null>(null);
+  const [interactionDetail, setInteractionDetail] = useState<{ title: string; body: string } | null>(null);
 
   // Active luck pillar for greeting card
   const [activeLp, setActiveLp] = useState<any>(null);
@@ -675,6 +712,12 @@ export default function CalendarScreen() {
                             <Text style={styles.antidoteText}>{disp.antidote}</Text>
                           </View>
                         )}
+                        <TouchableOpacity
+                          onPress={() => setInteractionDetail(getInteractionDetail(item.type, item.penalty_name))}
+                          style={styles.interactDetailBtn}
+                        >
+                          <Text style={styles.interactDetailBtnText}>ⓘ Detail makna klasik</Text>
+                        </TouchableOpacity>
                       </View>
                     );
                   })
@@ -734,6 +777,16 @@ export default function CalendarScreen() {
           subtitle={solarTermModal.season}
           body={solarTermModal.desc}
           onClose={() => setSolarTermModal(null)}
+        />
+      )}
+
+      {/* ── Interaction detail modal (makna klasik) ── */}
+      {interactionDetail && (
+        <InfoModal
+          visible={!!interactionDetail}
+          title={interactionDetail.title}
+          body={interactionDetail.body}
+          onClose={() => setInteractionDetail(null)}
         />
       )}
     </ScrollView>
@@ -919,6 +972,8 @@ const styles = StyleSheet.create({
   },
   antidoteLabel: { fontSize: 11, fontWeight: '900', color: C.teal, letterSpacing: 0.6, marginBottom: 6 },
   antidoteText:  { fontSize: 13, color: C.text, lineHeight: 21 },
+  interactDetailBtn: { marginTop: 8, alignSelf: 'flex-start' },
+  interactDetailBtnText: { fontSize: 11, color: C.textFaint, fontWeight: '700' },
 
   emptyCard: {
     backgroundColor: C.surface, borderRadius: 12, padding: 20, alignItems: 'center',

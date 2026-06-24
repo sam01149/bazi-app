@@ -390,6 +390,7 @@ def _interaction_to_dict(interaction) -> dict:
             "description": interaction.get("description"),
             "element": interaction.get("element"),
             "favorability": interaction.get("favorability"),
+            "penalty_name": interaction.get("penalty_name"),
         }
     return {
         "type": getattr(interaction, "type", None),
@@ -397,6 +398,7 @@ def _interaction_to_dict(interaction) -> dict:
         "calendar_branch": getattr(interaction, "calendar_branch", None),
         "description": getattr(interaction, "description", None),
         "element": getattr(interaction, "element", None),
+        "penalty_name": getattr(interaction, "penalty_name", None),
         "favorability": getattr(interaction, "favorability", None),
     }
 

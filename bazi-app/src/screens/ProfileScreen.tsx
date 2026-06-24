@@ -11,6 +11,7 @@ import { useChart } from '../context/ChartContext';
 import { useSimpleMode } from '../context/SimpleModeContext';
 import { C, STEM_COLOR, STEM_ELEMENT, BRANCH_ANIMAL } from '../theme';
 import InfoModal from '../components/InfoModal';
+import { PENALTY_NAME_ID, getInteractionDetail } from '../baziTerms';
 
 const ONBOARDING_KEY  = '@bazi_onboarding_seen';
 const NOTIF_KEY       = '@bazi_notifications_enabled';
@@ -150,9 +151,17 @@ const GE_JU_PRACTICAL: Record<string, string> = {
 };
 
 const NATAL_INTERACTION_LABEL: Record<string, string> = {
-  clash: 'Benturan Internal', six_combination: 'Kombinasi Internal', harm: 'Hambatan Internal',
-  penalty: 'Hukuman Internal', self_penalty: 'Hukuman Diri Internal',
+  clash: 'Benturan', six_combination: 'Kombinasi', harm: 'Hambatan', self_penalty: 'Hukuman Diri',
 };
+
+// Penalty (刑) has 3 classically distinct subtypes — fall back to the generic
+// label only if penalty_name is missing for some reason.
+function getInteractionLabel(item: any): string {
+  if (item.type === 'penalty') {
+    return PENALTY_NAME_ID[item.penalty_name] ?? 'Hukuman';
+  }
+  return NATAL_INTERACTION_LABEL[item.type] ?? item.type;
+}
 
 function getPersonalizedTermBody(key: TermKey | '', chartData: any): string {
   if (key === '' || !TERM_EXPLANATIONS[key]) return '';
@@ -331,6 +340,7 @@ export default function ProfileScreen() {
   const [narasiLoading,  setNarasiLoading]  = useState(false);
   const [narasi,         setNarasi]         = useState('');
   const [infoTopic,      setInfoTopic]      = useState<TermKey | ''>('');
+  const [infoDetail,     setInfoDetail]     = useState<{ title: string; body: string } | null>(null);
 
   const { simpleMode, toggleSimpleMode } = useSimpleMode();
   const [storyCardIdx, setStoryCardIdx] = useState(0);
@@ -1279,14 +1289,22 @@ export default function ProfileScreen() {
                     {simpleMode ? 'Hubungan dekade aktif dengan chart natal-mu:' : 'Hubungan 大運 aktif dengan pilar natal:'}
                   </Text>
                   {lpInteractions.map((it: any, idx: number) => (
-                    <View key={idx} style={styles.comboRow}>
+                    <TouchableOpacity
+                      key={idx}
+                      style={styles.comboRow}
+                      onPress={() => setInfoDetail(getInteractionDetail(it.type, it.penalty_name))}
+                    >
                       <Text style={styles.comboStems}>
-                        {simpleMode
-                          ? `${BRANCH_ANIMAL[it.user_branch] ?? it.user_branch} ↔ ${BRANCH_ANIMAL[it.luck_branch] ?? it.luck_branch}`
-                          : `${it.user_branch} ↔ ${it.luck_branch}`}
+                        {getInteractionLabel(it)}
+                        <Text style={{ color: C.textMuted }}>
+                          {'  '}
+                          {simpleMode
+                            ? `${BRANCH_ANIMAL[it.user_branch] ?? it.user_branch} ↔ ${BRANCH_ANIMAL[it.luck_branch] ?? it.luck_branch}`
+                            : `${it.user_branch} ↔ ${it.luck_branch}`}
+                        </Text>
                       </Text>
-                      <Text style={styles.comboPositions}>{it.description}</Text>
-                    </View>
+                      <Text style={styles.comboPositions}>ⓘ Detail makna klasik</Text>
+                    </TouchableOpacity>
                   ))}
                 </View>
               )}
@@ -1375,9 +1393,13 @@ export default function ProfileScreen() {
               </View>
               <View style={styles.comboCard}>
                 {natalInteractions.map((it: any, idx: number) => (
-                  <View key={idx} style={styles.comboRow}>
+                  <TouchableOpacity
+                    key={idx}
+                    style={styles.comboRow}
+                    onPress={() => setInfoDetail(getInteractionDetail(it.type, it.penalty_name))}
+                  >
                     <Text style={styles.comboStems}>
-                      {NATAL_INTERACTION_LABEL[it.type] ?? it.type}
+                      {getInteractionLabel(it)}
                       <Text style={{ color: C.textMuted }}>
                         {'  '}
                         {simpleMode
@@ -1385,8 +1407,8 @@ export default function ProfileScreen() {
                           : `${it.branch_a} ↔ ${it.branch_b}`}
                       </Text>
                     </Text>
-                    <Text style={styles.comboPositions}>{it.position_a} + {it.position_b}</Text>
-                  </View>
+                    <Text style={styles.comboPositions}>{it.position_a} + {it.position_b} · ⓘ Detail</Text>
+                  </TouchableOpacity>
                 ))}
               </View>
             </>
@@ -1579,6 +1601,16 @@ export default function ProfileScreen() {
           subtitle={TERM_EXPLANATIONS[infoTopic].subtitle}
           body={getPersonalizedTermBody(infoTopic, chartData)}
           onClose={() => setInfoTopic('')}
+        />
+      )}
+
+      {/* ── Interaction detail modal (makna klasik) ── */}
+      {infoDetail && (
+        <InfoModal
+          visible
+          title={infoDetail.title}
+          body={infoDetail.body}
+          onClose={() => setInfoDetail(null)}
         />
       )}
     </ScrollView>

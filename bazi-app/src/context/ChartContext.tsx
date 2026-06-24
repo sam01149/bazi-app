@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import axios from 'axios';
+import { API_URL } from '../config';
 
 const PROFILES_KEY      = '@bazi_profiles';
 const ACTIVE_IDX_KEY    = '@bazi_active_profile_idx';
@@ -47,6 +49,13 @@ export function ChartProvider({ children }: { children: ReactNode }) {
   const [profiles,         setProfiles]        = useState<StoredProfile[]>([]);
   const [activeProfileIdx, setActiveProfileIdx] = useState(-1);
   const [loading,          setLoading]          = useState(true);
+
+  useEffect(() => {
+    // Fire-and-forget wake-up call — HF Spaces free tier sleeps after inactivity,
+    // so ping it as early as possible to absorb the cold-start delay before the
+    // user actually triggers a heavier request (calendar/AI narasi).
+    axios.get(`${API_URL}/health`, { timeout: 30000 }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     (async () => {

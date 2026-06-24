@@ -200,12 +200,67 @@ def calculate_ten_god(day_master: str, target_stem: str) -> str:
     return "Unknown"
 
 
+def get_element_relation(day_master_element: str, other_element: str) -> str:
+    """
+    Groups an element's relationship to the Day Master's element into the five
+    generic forces (比劫/食神/財星/官殺/印綬), ignoring stem polarity. Used to compare
+    a branch's element against Yong Shen (用神), which is stored as one of these
+    five group names.
+    """
+    if not other_element:
+        return "Unknown"
+    if other_element == day_master_element:
+        return "比劫"
+    if PRODUCES.get(day_master_element) == other_element:
+        return "食神"
+    if CONTROLS.get(day_master_element) == other_element:
+        return "財星"
+    if CONTROLS.get(other_element) == day_master_element:
+        return "官殺"
+    if PRODUCES.get(other_element) == day_master_element:
+        return "印綬"
+    return "Unknown"
+
+
 def calculate_day_master_strength(pillars: dict, day_master: str) -> str:
     """
     Estimates Day Master strength by tallying which elements support vs. restrain it.
     Month branch carries 3× weight as the primary seasonal indicator.
+
+    Heavenly Stem Combinations (天干合) among year/month/hour stems shift the
+    combining stems' contribution to the combination's result element instead
+    of their original element, but only when the month branch's element
+    supports or produces that result element (the classical 合化 condition that
+    the season must back the transformation). The Day stem is excluded from
+    transformation — Day Master transformation (化氣格) needs criteria beyond
+    this engine's scope.
     """
     dm_element = HEAVENLY_STEMS_ELEMENT[day_master]
+    month_branch_element = EARTHLY_BRANCHES_ELEMENT[pillars["month"]["branch"]]
+
+    stem_overrides: dict[str, str] = {}
+    stem_positions = [
+        (pos, pillars[pos]["stem"])
+        for pos in ("year", "month", "hour")
+        if pillars.get(pos, {}).get("stem")
+    ]
+    for i in range(len(stem_positions)):
+        for j in range(i + 1, len(stem_positions)):
+            pos1, s1 = stem_positions[i]
+            pos2, s2 = stem_positions[j]
+            for combo_set, result_element in STEM_COMBINATIONS:
+                if {s1, s2} != combo_set:
+                    continue
+                transforms = (
+                    month_branch_element == result_element
+                    or PRODUCES.get(month_branch_element) == result_element
+                )
+                if transforms:
+                    stem_overrides[pos1] = result_element
+                    stem_overrides[pos2] = result_element
+
+    def _stem_element(pos: str) -> str:
+        return stem_overrides.get(pos, HEAVENLY_STEMS_ELEMENT[pillars[pos]["stem"]])
 
     def _score(element: str) -> int:
         if element == dm_element:
@@ -231,7 +286,7 @@ def calculate_day_master_strength(pillars: dict, day_master: str) -> str:
 
     # Other stems (year, month, hour) — exclude day stem (that IS the day master)
     for key in ("year", "month", "hour"):
-        score += _score(HEAVENLY_STEMS_ELEMENT[pillars[key]["stem"]])
+        score += _score(_stem_element(key))
 
     if score >= 5:
         return "Strong"

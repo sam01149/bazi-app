@@ -22,7 +22,7 @@ from app.engine.calculator import (
     get_luck_pillars, get_active_luck_pillar,
     get_special_stars, get_life_stage,
 )
-from app.engine.interactions import detect_calendar_interactions, detect_stem_combinations
+from app.engine.interactions import detect_calendar_interactions, detect_stem_combinations, annotate_favorability
 from app.engine.tables import HEAVENLY_STEMS_ELEMENT, HEAVENLY_STEMS_POLARITY
 from app.services.cerebras import (
     generate_narasi, generate_wish_analysis, generate_calendar_narasi,
@@ -139,6 +139,7 @@ def _build_chart_dict(db_chart: BaZiChart, ten_gods_map: dict = None, luck_pilla
         "void_branches": get_kong_wang(day_stem, db_chart.day_branch),
         "stem_combinations": detect_stem_combinations(pillars),
         "hidden_ten_gods": get_hidden_stem_ten_gods(pillars, day_stem),
+        "hour_unknown": bool(db_chart.hour_unknown),
     }
     if ten_gods_map:
         d["ten_gods"] = ten_gods_map
@@ -341,6 +342,7 @@ async def _build_calendar_response(
                 }
             }
             interactions = detect_calendar_interactions(user_dict, cal)
+            interactions = annotate_favorability(interactions, user_db_chart.day_stem, user_db_chart.yong_shen)
 
     date_str = dt_aware.strftime("%Y-%m-%d")
     return CalendarResponse(
@@ -357,6 +359,7 @@ def _interaction_to_dict(interaction) -> dict:
             "calendar_branch": interaction.get("calendar_branch"),
             "description": interaction.get("description"),
             "element": interaction.get("element"),
+            "favorability": interaction.get("favorability"),
         }
     return {
         "type": getattr(interaction, "type", None),
@@ -364,6 +367,7 @@ def _interaction_to_dict(interaction) -> dict:
         "calendar_branch": getattr(interaction, "calendar_branch", None),
         "description": getattr(interaction, "description", None),
         "element": getattr(interaction, "element", None),
+        "favorability": getattr(interaction, "favorability", None),
     }
 
 
@@ -408,6 +412,7 @@ async def get_calendar_narasi(req: CalendarNarasiRequest, db: AsyncSession = Dep
         }
     }
     interactions_raw = detect_calendar_interactions(user_dict, cal)
+    interactions_raw = annotate_favorability(interactions_raw, db_chart.day_stem, db_chart.yong_shen)
     interactions_list = [_interaction_to_dict(i) for i in interactions_raw]
 
     calendar_pillars = {
@@ -710,6 +715,7 @@ async def get_annual_analysis(year: int, chart_id: str, timezone: str = "Asia/Ja
         }
     }
     interactions_raw = detect_calendar_interactions(user_dict, cal_year)
+    interactions_raw = annotate_favorability(interactions_raw, db_chart.day_stem, db_chart.yong_shen)
     interactions_list = [_interaction_to_dict(i) for i in interactions_raw]
 
     ten_gods_map = {tg.position: tg.ten_god for tg in db_chart.ten_gods if tg.stem_or_branch == "stem"}
@@ -756,25 +762,47 @@ async def get_energy_summary(chart_id: str, date: str, db: AsyncSession = Depend
         }
     }
     interactions = detect_calendar_interactions(natal_dict, cal)
+    interactions = annotate_favorability(interactions, db_chart.day_stem, db_chart.yong_shen)
 
-    if any(i["type"] == "clash" for i in interactions):
+    def _has(pred) -> bool:
+        return any(pred(i) for i in interactions)
+
+    if _has(lambda i: i.get("favorability") == "challenging"):
         level = "challenging"
         label = "Hari Penuh Gesekan"
-        body = "Ada benturan energi hari ini. Cek interaksi dan strategi taktismu."
-    elif any(i["type"] in ("harm", "penalty", "self_penalty") for i in interactions):
+        body = "Ada benturan energi hari ini yang menyentuh elemen andalan chart-mu. Cek interaksi dan strategi taktismu."
+    elif _has(lambda i: i.get("favorability") == "favorable" and i["type"] in ("clash", "harm", "penalty", "self_penalty")):
+        level = "good"
+        label = "Energi Membersihkan"
+        body = "Ada benturan/hambatan hari ini, tapi justru menyingkirkan elemen yang tidak chart-mu butuhkan."
+    elif _has(lambda i: i.get("favorability") == "favorable" and i["type"] == "six_combination"):
+        level = "good"
+        label = "Energi Mendukung"
+        body = "Hari ini ada kombinasi yang langsung memperkuat elemen andalan chart-mu."
+    elif _has(lambda i: i.get("favorability") is None and i["type"] in ("clash", "harm", "penalty", "self_penalty")):
         level = "caution"
         label = "Perlu Kewaspadaan"
         body = "Ada hambatan energi hari ini. Baca analisis untuk panduan."
-    elif any(i["type"] == "six_combination" for i in interactions):
+    elif _has(lambda i: i["type"] == "six_combination"):
         level = "good"
         label = "Energi Mendukung"
         body = "Hari ini ada kombinasi positif di chartmu."
+    elif interactions:
+        level = "neutral"
+        label = "Energi Netral"
+        body = "Ada interaksi energi hari ini, namun dampaknya tidak signifikan ke elemen andalan chart-mu."
     else:
         level = "neutral"
         label = "Energi Netral"
         body = "Tidak ada interaksi khusus hari ini."
 
     return {"level": level, "label": label, "body": body, "interaction_count": len(interactions)}
+
+
+@router.get("/health")
+async def health_check():
+    """Lightweight liveness probe — used by the frontend to wake a sleeping HF Spaces container early."""
+    return {"status": "ok"}
 
 
 @router.get("/solar-terms/year/{year}")

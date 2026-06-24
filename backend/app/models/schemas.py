@@ -67,6 +67,7 @@ class InteractionSchema(BaseModel):
     calendar_branch: str
     description: str
     element: Optional[str] = None
+    favorability: Optional[str] = None  # 'challenging' | 'favorable' | 'neutral' | None (Yong Shen unresolved)
 
 class CalendarResponse(BaseModel):
     current_pillars: PillarsSchema

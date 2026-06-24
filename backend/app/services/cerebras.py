@@ -44,6 +44,9 @@ Input yang kamu terima:
 - hidden_ten_gods: ten god dari hidden stem setiap branch
 - stem_combinations: pasangan stem yang saling mengikat (天干合)
 - active_luck_pillar: stem + branch + usia mulai dekade aktif (jika tersedia)
+- hour_unknown: jika true, jam lahir tidak diketahui — Pilar Jam, day_master_strength, dan yong_shen dihitung dengan estimasi dasar saja
+
+ATURAN KHUSUS hour_unknown: jika hour_unknown bernilai true, sisipkan satu catatan singkat (tanpa jargon) bahwa analisis kekuatan elemen ini bersifat estimasi dasar karena jam lahir tidak spesifik. Jangan terdengar terlalu percaya diri pada bagian Element Balance / Useful God.
 
 Analisis dalam urutan ini:
 1. Core identity — Day Master + Ge Ju dengan analogi konkret; apa yang dikejar struktur ini
@@ -63,6 +66,8 @@ PROFILE_SYSTEM_PROMPT_V2 = """Kamu adalah BaZi Strategic Analyst menggunakan fra
 WAJIB: setiap pernyataan harus menggunakan framing probabilistik — "kecenderungan", "pola", "cenderung", bukan "akan", "pasti", "selalu".
 DILARANG: membuat interpretasi dari data yang tidak tersedia dalam input.
 BAHASA OUTPUT: Bahasa Indonesia.
+
+ATURAN KHUSUS hour_unknown: jika input menyertakan hour_unknown=true, jam lahir tidak diketahui — Pilar Jam, day_master_strength, dan yong_shen dihitung dengan estimasi dasar saja. Sisipkan satu catatan singkat di SECTION:keseimbangan_elemen bahwa estimasi ini bersifat dasar karena jam lahir tidak spesifik, dan jangan terdengar terlalu percaya diri di bagian itu.
 
 Output WAJIB dalam format ini — 5 bagian dengan penanda SECTION: (tidak boleh ada teks apapun sebelum SECTION pertama):
 
@@ -194,6 +199,7 @@ async def generate_narasi(chart_data: Dict[str, Any], section: str) -> str:
         "hidden_ten_gods": chart_data.get("hidden_ten_gods"),
         "stem_combinations": chart_data.get("stem_combinations"),
         "active_luck_pillar": chart_data.get("active_luck_pillar"),
+        "hour_unknown": chart_data.get("hour_unknown") or None,
     }
     payload = {k: v for k, v in payload.items() if v is not None}
     messages = [

@@ -1,4 +1,11 @@
-from app.engine.tables import SIX_CLASHES, SIX_COMBINATIONS, SIX_HARMS, STEM_COMBINATIONS
+from app.engine.tables import (
+    SIX_CLASHES, SIX_COMBINATIONS, SIX_HARMS, STEM_COMBINATIONS,
+    HEAVENLY_STEMS_ELEMENT, EARTHLY_BRANCHES_ELEMENT,
+)
+from app.engine.calculator import get_element_relation
+
+# Interaction types that disturb a natal branch (vs. six_combination, which bonds one)
+_DISRUPTIVE_TYPES = frozenset({"clash", "harm", "penalty", "self_penalty"})
 
 # Expanded penalty pairs — derived from THREE_PENALTIES for pair-based cross-chart detection.
 # Full three-branch sets are detected when at least two branches from the same penalty group meet.
@@ -119,3 +126,37 @@ def detect_calendar_interactions(user_chart: dict, calendar_pillars: dict) -> li
             seen.add(key)
             unique.append(item)
     return unique
+
+
+def annotate_favorability(interactions: list, day_master: str, yong_shen: str | None) -> list:
+    """
+    Tags each interaction with how it affects the user's Yong Shen (用神) — the
+    element the chart actually needs — instead of treating interaction TYPE
+    alone as good/bad (a Clash on a branch the chart doesn't need is a relief,
+    not a threat).
+
+    - 'challenging': the disturbed natal branch carries the Yong Shen element.
+    - 'favorable': a disruptive interaction hits a branch that ISN'T the Yong
+      Shen (removes unneeded energy), or a Six Combination resolves into the
+      Yong Shen element.
+    - 'neutral': interaction doesn't meaningfully move the Yong Shen needle.
+    - None: Yong Shen wasn't resolved for this chart — caller should fall back
+      to type-based heuristics.
+    """
+    if not yong_shen or yong_shen == "需要判断" or not day_master:
+        for item in interactions:
+            item["favorability"] = None
+        return interactions
+
+    dm_element = HEAVENLY_STEMS_ELEMENT.get(day_master, "")
+    for item in interactions:
+        if item["type"] in _DISRUPTIVE_TYPES:
+            user_element = EARTHLY_BRANCHES_ELEMENT.get(item["user_branch"], "")
+            relation = get_element_relation(dm_element, user_element)
+            item["favorability"] = "challenging" if relation == yong_shen else "favorable"
+        elif item["type"] == "six_combination":
+            combo_relation = get_element_relation(dm_element, item.get("element", ""))
+            item["favorability"] = "favorable" if combo_relation == yong_shen else "neutral"
+        else:
+            item["favorability"] = "neutral"
+    return interactions

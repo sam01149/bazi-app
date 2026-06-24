@@ -27,13 +27,59 @@ const MONTHS_ID = [
   'Juli','Agustus','September','Oktober','November','Desember',
 ];
 
-const INTERACTION_META: Record<string, { label: string; color: string; icon: string }> = {
-  clash:           { label: 'Benturan',     color: C.terra, icon: '⚡' },
-  six_combination: { label: 'Kombinasi',    color: C.teal,  icon: '◎' },
-  harm:            { label: 'Hambatan',     color: C.amber, icon: '◌' },
-  penalty:         { label: 'Hukuman',      color: C.terra, icon: '△' },
-  self_penalty:    { label: 'Hukuman Diri', color: C.amber, icon: '△' },
+const INTERACTION_BASE: Record<string, { label: string; icon: string }> = {
+  clash:           { label: 'Benturan',     icon: '⚡' },
+  six_combination: { label: 'Kombinasi',    icon: '◎' },
+  harm:            { label: 'Hambatan',     icon: '◌' },
+  penalty:         { label: 'Hukuman',      icon: '△' },
+  self_penalty:    { label: 'Hukuman Diri', icon: '△' },
 };
+
+const DISRUPTIVE_TYPES = new Set(['clash', 'harm', 'penalty', 'self_penalty']);
+const DISRUPTIVE_CHALLENGING_COLOR: Record<string, string> = {
+  clash: C.terra, penalty: C.terra, harm: C.amber, self_penalty: C.amber,
+};
+
+// Favorability ('challenging' | 'favorable' | 'neutral' | undefined) compares the
+// interaction against the user's Yong Shen (elemen andalan) — a Clash isn't
+// automatically bad; it depends on whether it disturbs the element the chart needs.
+function getInteractionDisplay(item: any): { label: string; icon: string; color: string; plain?: string; antidote?: string } {
+  const base = INTERACTION_BASE[item.type] ?? { label: item.type, icon: '·' };
+  const fav: string | undefined = item.favorability ?? undefined;
+  const disruptive = DISRUPTIVE_TYPES.has(item.type);
+
+  if (fav === 'favorable' && disruptive) {
+    return {
+      ...base,
+      color: C.teal,
+      plain: 'Interaksi ini menyentuh bagian chart yang bukan elemen andalanmu — justru membantu melepas energi yang tidak chart-mu butuhkan.',
+      antidote: 'Gunakan momentum ini untuk: Mengakhiri kebiasaan/komitmen yang sudah tidak relevan, membersihkan hal usang. Energi ini bekerja untukmu, bukan melawanmu.',
+    };
+  }
+  if (item.type === 'six_combination') {
+    if (fav === 'favorable') {
+      return { ...base, color: C.teal, plain: INTERACTION_PLAIN.six_combination };
+    }
+    if (fav === 'neutral') {
+      return {
+        ...base,
+        color: C.amber,
+        plain: 'Ada ikatan energi hari ini, namun tidak langsung memperkuat elemen andalan chart-mu — tetap kondusif untuk kolaborasi ringan, bukan langkah besar.',
+      };
+    }
+    return { ...base, color: C.teal, plain: INTERACTION_PLAIN.six_combination };
+  }
+  if (disruptive) {
+    // 'challenging', atau favorability belum bisa ditentukan (yong shen unresolved)
+    return {
+      ...base,
+      color: DISRUPTIVE_CHALLENGING_COLOR[item.type] ?? C.terra,
+      plain: INTERACTION_PLAIN[item.type],
+      antidote: INTERACTION_ANTIDOTE[item.type],
+    };
+  }
+  return { ...base, color: C.gold, plain: INTERACTION_PLAIN[item.type] };
+}
 
 const INTERACTION_PLAIN: Record<string, string> = {
   clash:           'Hindari konfrontasi langsung dan keputusan impulsif hari ini.',
@@ -81,6 +127,25 @@ const SOLAR_TERM_INFO: Record<string, SolarTermInfo> = {
 type EnergyStatus = { level: 'neutral' | 'good' | 'caution' | 'challenging'; label: string; color: string; summary: string };
 
 function getEnergyStatus(interactions: any[]): EnergyStatus {
+  const favs = interactions.map((i: any) => i.favorability).filter((f: any) => !!f);
+
+  // Yong Shen resolved for this chart — judge the day by its actual impact, not interaction type alone.
+  if (favs.length > 0) {
+    if (favs.includes('challenging')) return {
+      level: 'challenging', color: C.terra, label: 'Hari Penuh Tekanan',
+      summary: 'Ada interaksi hari ini yang menyentuh elemen andalan chart-mu. Hindari keputusan besar, jaga emosi tetap stabil.',
+    };
+    if (favs.includes('favorable')) return {
+      level: 'good', color: C.teal, label: 'Energi Mendukung',
+      summary: 'Interaksi hari ini selaras dengan elemen andalan chart-mu. Manfaatkan untuk kerjasama dan langkah maju.',
+    };
+    return {
+      level: 'neutral', color: C.textMuted, label: 'Energi Netral',
+      summary: 'Ada interaksi hari ini, tapi dampaknya ke elemen andalan chart-mu tidak signifikan.',
+    };
+  }
+
+  // Fallback — Yong Shen belum terselesaikan untuk chart ini, pakai heuristik berbasis tipe interaksi.
   const types = interactions.map((i: any) => i.type as string);
   const hasClashOrPenalty = types.some(t => t === 'clash' || t === 'penalty' || t === 'self_penalty');
   const hasHarm           = types.some(t => t === 'harm');
@@ -572,25 +637,23 @@ export default function CalendarScreen() {
                   </View>
                 ) : (
                   interactions.map((item: any, idx: number) => {
-                    const meta = INTERACTION_META[item.type] ?? { label: item.type, color: C.gold, icon: '·' };
-                    const plain = INTERACTION_PLAIN[item.type];
-                    const antidote = INTERACTION_ANTIDOTE[item.type];
+                    const disp = getInteractionDisplay(item);
                     return (
-                      <View key={idx} style={[styles.interactCard, { borderLeftColor: meta.color }]}>
+                      <View key={idx} style={[styles.interactCard, { borderLeftColor: disp.color }]}>
                         <View style={styles.interactHeader}>
-                          <Text style={[styles.interactBadge, { color: meta.color, borderColor: meta.color }]}>
-                            {meta.icon} {meta.label.toUpperCase()}
+                          <Text style={[styles.interactBadge, { color: disp.color, borderColor: disp.color }]}>
+                            {disp.icon} {disp.label.toUpperCase()}
                           </Text>
                           <Text style={styles.interactBranches}>
                             {item.user_branch} ↔ {item.calendar_branch}
                           </Text>
                         </View>
                         <Text style={styles.interactDesc}>{item.description}</Text>
-                        {plain && <Text style={styles.interactPlain}>{plain}</Text>}
-                        {antidote && (
+                        {disp.plain && <Text style={styles.interactPlain}>{disp.plain}</Text>}
+                        {disp.antidote && (
                           <View style={styles.antidoteBox}>
                             <Text style={styles.antidoteLabel}>✦ Cara menggunakan energi ini:</Text>
-                            <Text style={styles.antidoteText}>{antidote}</Text>
+                            <Text style={styles.antidoteText}>{disp.antidote}</Text>
                           </View>
                         )}
                       </View>

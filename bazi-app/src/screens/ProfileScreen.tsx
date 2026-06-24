@@ -109,12 +109,21 @@ function resolveYongShenElement(dmElement: string, yongShenCategory: string): st
   return ELEMENTS_ID.find(el => getElementRelation(dmElement, el) === yongShenCategory) ?? null;
 }
 
+// Yong Shen muncul dari dua kondisi yang terasa beda secara emosional: Day
+// Master kuat → energinya berlebih dan butuh saluran keluar; Day Master lemah
+// → kehabisan sokongan dan memaksa diri tetap jalan. Validasi kondisi ini dulu
+// sebelum lempar saran, supaya tidak terasa seperti daftar tugas generik.
+const YONG_SHEN_STRENGTH_LEAD: Record<'overflow' | 'depleted', string> = {
+  overflow: 'Day Master-mu cenderung kuat — energi itu sering terasa berlebih dan butuh jalan keluar. Kalau tidak disalurkan, biasanya berubah jadi keputusan impulsif atau memaksakan kehendak.',
+  depleted: 'Day Master-mu cenderung kurang tersokong — kemungkinan kamu sering memaksa diri tetap jalan padahal sebenarnya kehabisan dukungan, dan itu bisa terasa melelahkan tanpa kamu sadari sebabnya.',
+};
+
 const ELEMENT_PRACTICAL: Record<string, string> = {
-  Kayu:  'Secara praktis, elemen Kayu mendukung pertumbuhan, belajar hal baru, dan memulai proyek. Perbanyak aktivitas yang melibatkan pengembangan diri dan ekspansi — kursus, bacaan baru, atau merintis sesuatu yang baru.',
-  Api:   'Secara praktis, elemen Api mendukung visibilitas, ekspresi diri, dan koneksi sosial yang hangat. Perbanyak aktivitas yang menampilkan dirimu ke publik — presentasi, networking, kegiatan kreatif yang terlihat orang lain.',
-  Tanah: 'Secara praktis, elemen Tanah mendukung stabilitas, kepercayaan, dan struktur jangka panjang. Perbanyak aktivitas yang membangun fondasi — menabung, rutinitas konsisten, komitmen jangka panjang.',
-  Logam: 'Secara praktis, elemen Logam mendukung disiplin, ketegasan, dan pengambilan keputusan yang tajam. Perbanyak aktivitas yang melatih fokus dan batasan — perencanaan terstruktur, evaluasi diri yang jujur.',
-  Air:   'Secara praktis, elemen Air mendukung komunikasi, kebijaksanaan, dan fleksibilitas. Perbanyak belajar, mencari mentor, atau menunda keputusan impulsif untuk berpikir lebih dulu.',
+  Kayu:  'Arahnya: pertumbuhan dan ruang baru — beri dirimu izin untuk belajar hal baru, memulai proyek, atau mengambil langkah yang selama ini ditahan.',
+  Api:   'Arahnya: ekspresi dan keterlihatan — beri dirimu ruang untuk tampil, bicara, atau membagikan apa yang kamu kerjakan, daripada terus memendam.',
+  Tanah: 'Arahnya: stabilitas dan komitmen — pilih satu hal untuk dikerjakan konsisten dalam waktu lama, daripada mencoba banyak hal sekaligus.',
+  Logam: 'Arahnya: batasan dan ketegasan — izinkan dirimu menolak, menetapkan aturan, atau mengevaluasi sesuatu secara jujur tanpa rasa bersalah.',
+  Air:   'Arahnya: belajar dan bersandar — cari mentor, beri waktu untuk berpikir sebelum bertindak, jangan memaksa diri tahu semua jawaban sendirian.',
 };
 
 const GE_JU_PRACTICAL: Record<string, string> = {
@@ -145,8 +154,17 @@ function getPersonalizedTermBody(key: TermKey | '', chartData: any): string {
     const element = dmElement && chartData?.yong_shen
       ? resolveYongShenElement(dmElement, chartData.yong_shen)
       : null;
-    const extra = element ? ELEMENT_PRACTICAL[element] : null;
-    return extra ? `${base}\n\n${extra}` : base;
+    if (!element) return base;
+
+    // Sama dengan get_yong_shen() di backend: Strong/Moderate-Strong → "overflow",
+    // sisanya → "depleted". Strength menentukan KENAPA elemen ini dibutuhkan,
+    // bukan cuma apa elemennya.
+    const strength = chartData?.day_master_strength ?? '';
+    const lead = (strength === 'Strong' || strength === 'Moderate-Strong')
+      ? YONG_SHEN_STRENGTH_LEAD.overflow
+      : YONG_SHEN_STRENGTH_LEAD.depleted;
+
+    return `${base}\n\n${lead} ${ELEMENT_PRACTICAL[element]}`;
   }
 
   return base;

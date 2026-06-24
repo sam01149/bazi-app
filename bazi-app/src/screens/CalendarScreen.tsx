@@ -40,6 +40,29 @@ const DISRUPTIVE_CHALLENGING_COLOR: Record<string, string> = {
   clash: C.terra, penalty: C.terra, harm: C.amber, self_penalty: C.amber,
 };
 
+// Per-type 'favorable' copy — mirrors the nuance each type already has in the
+// 'challenging' path (clash=konfrontasi, harm=dinamika tersembunyi, penalty=
+// tekanan eksternal, self_penalty=ketidakstabilan internal) instead of one
+// generic sentence for all 4, so Clash and Harm don't read identically.
+const DISRUPTIVE_FAVORABLE: Record<string, { plain: string; antidote: string }> = {
+  clash: {
+    plain: 'Benturan ini menyentuh bagian chart yang bukan elemen andalanmu — bisa dipakai untuk benar-benar memutus sesuatu yang usang tanpa mengganggu fondasi pentingmu.',
+    antidote: 'Gunakan momentum ini untuk: Mengakhiri kebiasaan/komitmen yang sudah tidak relevan, membuat keputusan tegas yang selama ini ditunda. Energi benturan ini bekerja untukmu, bukan melawanmu.',
+  },
+  harm: {
+    plain: 'Ada dinamika tersembunyi hari ini, tapi menyasar bagian yang bukan elemen andalanmu — miskomunikasi kecil di area ini kemungkinan tidak berdampak besar.',
+    antidote: 'Gunakan momentum ini untuk: Membersihkan gosip/asumsi lama, klarifikasi hal yang selama ini mengganjal. Risikonya rendah karena tidak menyentuh area vital chart-mu.',
+  },
+  penalty: {
+    plain: 'Ada tekanan situasional hari ini, tapi tidak menyasar elemen andalanmu — tekanan ini kemungkinan tidak benar-benar mengganggu fungsi utamamu.',
+    antidote: 'Gunakan momentum ini untuk: Menyelesaikan tugas administratif yang menumpuk, beres-beres hal teknis. Tekanan dari luar ini bisa jadi dorongan, bukan ancaman.',
+  },
+  self_penalty: {
+    plain: 'Ada gejolak energi internal hari ini, tapi di bagian yang bukan elemen andalanmu — dampaknya ke performa utamamu kemungkinan minim.',
+    antidote: 'Gunakan momentum ini untuk: Refleksi ringan atau coba hal baru tanpa tekanan — gejolak ini tidak menyasar fondasi utamamu.',
+  },
+};
+
 // Favorability ('challenging' | 'favorable' | 'neutral' | undefined) compares the
 // interaction against the user's Yong Shen (elemen andalan) — a Clash isn't
 // automatically bad; it depends on whether it disturbs the element the chart needs.
@@ -49,12 +72,8 @@ function getInteractionDisplay(item: any): { label: string; icon: string; color:
   const disruptive = DISRUPTIVE_TYPES.has(item.type);
 
   if (fav === 'favorable' && disruptive) {
-    return {
-      ...base,
-      color: C.teal,
-      plain: 'Interaksi ini menyentuh bagian chart yang bukan elemen andalanmu — justru membantu melepas energi yang tidak chart-mu butuhkan.',
-      antidote: 'Gunakan momentum ini untuk: Mengakhiri kebiasaan/komitmen yang sudah tidak relevan, membersihkan hal usang. Energi ini bekerja untukmu, bukan melawanmu.',
-    };
+    const variant = DISRUPTIVE_FAVORABLE[item.type];
+    return { ...base, color: C.teal, plain: variant?.plain, antidote: variant?.antidote };
   }
   if (item.type === 'six_combination') {
     if (fav === 'favorable') {
